@@ -14,17 +14,9 @@ import (
 type Item struct {
 	Section  string // "Tasks" ou "Hábitos"
 	Category string // subcategoria de hábito (vazio em Tasks)
-	Time     string // "20 min", "5/15 min", "xST"...
-	Flag     string // "", "I", "U", "IU"
+	Time     string // "20 min", "5/15 min", "xST"... (vazio = perguntar)
+	Flag     string // "", "I", "U", "IU" (vazio = perguntar)
 	Desc     string
-}
-
-// Label é como o item aparece no seletor.
-func (i Item) Label() string {
-	if i.Category == "" {
-		return i.Desc
-	}
-	return fmt.Sprintf("[%s] %s", i.Category, i.Desc)
 }
 
 // Resolved é um item já com tempo e flag definidos pelo usuário.
@@ -34,8 +26,20 @@ type Resolved struct {
 	FinalFlag string
 }
 
-// - [ ] 30min (I) - descrição
-var lineRe = regexp.MustCompile(`^- \[([ xX])\] (.+?) \((.*?)\) - (.*)$`)
+// Stage agrupa os itens que são escolhidos juntos, numa etapa do wizard.
+type Stage struct {
+	Title string
+	Items []Item
+}
+
+// O parser é tolerante: aceita o formato completo, tempo sem flag, flag sem
+// tempo e linhas livres. Só itens já concluídos ([x]) ficam de fora.
+var (
+	timeFlagRe = regexp.MustCompile(`^- \[([ xX])\] (.+?) \((.*?)\) - (.*)$`)
+	timeOnlyRe = regexp.MustCompile(`(?i)^- \[([ xX])\] (x?st|\d+(?:/\d+)?\s*min) - (.*)$`)
+	flagOnlyRe = regexp.MustCompile(`^- \[([ xX])\] \(([IUiu]*)\) - (.*)$`)
+	plainRe    = regexp.MustCompile(`^- \[([ xX])\] (.+)$`)
+)
 
 // ParseWeeklist lê o arquivo da weeklist e devolve os itens pendentes.
 func ParseWeeklist(path string) ([]Item, error) {
@@ -47,8 +51,7 @@ func ParseWeeklist(path string) ([]Item, error) {
 }
 
 // Parse extrai os itens pendentes de # Tasks e # Hábitos, agrupando os
-// hábitos pelas subcategorias (## ...). Mesmas regras do template do Obsidian:
-// linhas fora do formato "- [ ] <tempo> (<flag>) - <desc>" são ignoradas.
+// hábitos pelas subcategorias (## ...).
 func Parse(content string) []Item {
 	var items []Item
 	section, category := "", ""
@@ -74,22 +77,101 @@ func Parse(content string) []Item {
 		if section == "" {
 			continue
 		}
-		m := lineRe.FindStringSubmatch(line)
-		if m == nil {
+		it, ok := parseLine(line)
+		if !ok {
 			continue
 		}
-		if strings.TrimSpace(m[1]) != "" { // [x] ou [X] já concluído
-			continue
-		}
-		items = append(items, Item{
-			Section:  section,
-			Category: category,
-			Time:     strings.TrimSpace(m[2]),
-			Flag:     strings.TrimSpace(m[3]),
-			Desc:     strings.TrimSpace(m[4]),
-		})
+		it.Section = section
+		it.Category = category
+		items = append(items, it)
 	}
 	return items
+}
+
+// parseLine interpreta uma linha "- [ ] ..." pendente.
+func parseLine(line string) (Item, bool) {
+	if m := timeFlagRe.FindStringSubmatch(line); m != nil {
+		if isDone(m[1]) {
+			return Item{}, false
+		}
+		return Item{
+			Time: strings.TrimSpace(m[2]),
+			Flag: strings.TrimSpace(m[3]),
+			Desc: strings.TrimSpace(m[4]),
+		}, true
+	}
+
+	if m := timeOnlyRe.FindStringSubmatch(line); m != nil {
+		if isDone(m[1]) {
+			return Item{}, false
+		}
+		return Item{
+			Time: strings.TrimSpace(m[2]),
+			Desc: strings.TrimSpace(m[3]),
+		}, true
+	}
+
+	if m := flagOnlyRe.FindStringSubmatch(line); m != nil {
+		if isDone(m[1]) {
+			return Item{}, false
+		}
+		return Item{
+			Flag: strings.TrimSpace(m[2]),
+			Desc: strings.TrimSpace(m[3]),
+		}, true
+	}
+
+	if m := plainRe.FindStringSubmatch(line); m != nil {
+		if isDone(m[1]) {
+			return Item{}, false
+		}
+		return Item{Desc: strings.TrimSpace(m[2])}, true
+	}
+
+	return Item{}, false
+}
+
+func isDone(check string) bool {
+	check = strings.TrimSpace(check)
+	return check == "x" || check == "X"
+}
+
+// Stages separa os itens em etapas: Tasks primeiro, depois cada categoria de
+// hábito na ordem em que aparece na weeklist. Etapas vazias não entram.
+func Stages(items []Item) []Stage {
+	var stages []Stage
+	index := map[string]int{}
+
+	add := func(key, title string) *Stage {
+		if pos, ok := index[key]; ok {
+			return &stages[pos]
+		}
+		index[key] = len(stages)
+		stages = append(stages, Stage{Title: title})
+		return &stages[len(stages)-1]
+	}
+
+	for _, it := range items {
+		if it.Section != "Tasks" {
+			continue
+		}
+		stage := add("tasks", "Tasks")
+		stage.Items = append(stage.Items, it)
+	}
+
+	for _, it := range items {
+		if it.Section != "Hábitos" {
+			continue
+		}
+		title := it.Category
+		if title == "" {
+			title = "Hábitos"
+		}
+		stage := add("cat:"+title, title)
+		stage.Items = append(stage.Items, it)
+	}
+
+	return stages
 }
 
 // Render devolve o conteúdo da daylist no mesmo formato do template do

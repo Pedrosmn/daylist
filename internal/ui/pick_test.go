@@ -37,36 +37,58 @@ func TestPickPlainInvalidIsCancel(t *testing.T) {
 	}
 }
 
-func TestPickPlainMulti(t *testing.T) {
-	setStdin(t, "1 3\n")
-	got, err := pickPlainMulti("escolha: ", []string{"a", "b", "c"})
+func TestTogglePlainTogglesAndFinishes(t *testing.T) {
+	setStdin(t, "2\n3\n\n")
+	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0] != "a" || got[1] != "c" {
-		t.Errorf("got = %v, want [a c]", got)
+	if len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Errorf("got = %v, want [1 2]", got)
 	}
 }
 
-func TestPickPlainMultiCommasAndDuplicates(t *testing.T) {
-	setStdin(t, "2,4,2 9\n")
-	got, err := pickPlainMulti("escolha: ", []string{"a", "b", "c", "d"})
+func TestTogglePlainUntoggles(t *testing.T) {
+	setStdin(t, "2\n2\n\n")
+	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0] != "b" || got[1] != "d" {
-		t.Errorf("got = %v, want [b d]", got)
+	if len(got) != 0 {
+		t.Errorf("got = %v, want vazio", got)
 	}
 }
 
-func TestPickPlainMultiEmptyIsCancel(t *testing.T) {
-	setStdin(t, "\n")
-	got, err := pickPlainMulti("escolha: ", []string{"a", "b"})
+func TestTogglePlainFinishRow(t *testing.T) {
+	setStdin(t, "0\n")
+	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != nil {
-		t.Errorf("got = %v, want nil", got)
+	if len(got) != 0 {
+		t.Errorf("got = %v, want vazio", got)
+	}
+}
+
+func TestTogglePlainEOFKeepsMarks(t *testing.T) {
+	setStdin(t, "2\n")
+	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != 1 {
+		t.Errorf("got = %v, want [1]", got)
+	}
+}
+
+func TestTogglePlainIgnoresInvalid(t *testing.T) {
+	setStdin(t, "x\n9\n2\n\n")
+	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != 1 {
+		t.Errorf("got = %v, want [1]", got)
 	}
 }
 

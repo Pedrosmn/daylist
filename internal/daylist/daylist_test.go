@@ -70,10 +70,9 @@ func TestParseWeeklist(t *testing.T) {
 		t.Fatalf("ParseWeeklist: %v", err)
 	}
 
-	// 1 task válida + 24 hábitos (as linhas "task tcc" e "arrumar perfil no
-	// oxetech" não têm tempo/flag e são ignoradas, como no template).
-	if len(items) != 25 {
-		t.Fatalf("esperava 25 itens, veio %d", len(items))
+	// 3 tasks (a do JOURNAL + as duas sem tempo/flag) + 24 hábitos.
+	if len(items) != 27 {
+		t.Fatalf("esperava 27 itens, veio %d", len(items))
 	}
 
 	first := items[0]
@@ -88,8 +87,12 @@ func TestParseWeeklist(t *testing.T) {
 		byDesc[it.Desc] = it
 	}
 
-	if _, ok := byDesc["task tcc"]; ok {
-		t.Error("linha sem tempo/flag não deveria ser parseada")
+	loose := byDesc["task tcc"]
+	if loose.Section != "Tasks" || loose.Time != "" || loose.Flag != "" {
+		t.Errorf("task sem tempo/flag inesperada: %+v", loose)
+	}
+	if _, ok := byDesc["arrumar perfil no oxetech"]; !ok {
+		t.Error("task livre deveria entrar")
 	}
 
 	dp900 := byDesc["Estudar para DP-900"]
@@ -101,6 +104,36 @@ func TestParseWeeklist(t *testing.T) {
 	composite := byDesc["Tempo na área"]
 	if composite.Category != "Social" || composite.Time != "5/15 min" || composite.Flag != "" {
 		t.Errorf("tempo composto inesperado: %+v", composite)
+	}
+}
+
+func TestParseTolerantFormats(t *testing.T) {
+	content := `# Tasks
+- [ ] 40 min (I) - completa
+- [ ] 30 min - só tempo
+- [ ] (U) - só flag
+- [ ] livre
+- [x] 10 min (I) - feita
+`
+	items := Parse(content)
+	if len(items) != 4 {
+		t.Fatalf("esperava 4 itens, veio %d: %+v", len(items), items)
+	}
+
+	cases := []struct {
+		desc, time, flag string
+	}{
+		{"completa", "40 min", "I"},
+		{"só tempo", "30 min", ""},
+		{"só flag", "", "U"},
+		{"livre", "", ""},
+	}
+	for i, want := range cases {
+		got := items[i]
+		if got.Desc != want.desc || got.Time != want.time || got.Flag != want.flag {
+			t.Errorf("item %d = %+v, esperava desc=%q time=%q flag=%q",
+				i, got, want.desc, want.time, want.flag)
+		}
 	}
 }
 
@@ -131,6 +164,51 @@ func TestParseWeeklistNotFound(t *testing.T) {
 	_, err := ParseWeeklist(filepath.Join(t.TempDir(), "nao-existe.md"))
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("esperava os.ErrNotExist, veio %v", err)
+	}
+}
+
+func TestStages(t *testing.T) {
+	items := Parse(weeklistW43)
+	stages := Stages(items)
+
+	wantTitles := []string{
+		"Tasks", "Estudos", "Exercício Físico", "Social", "Mindfulness",
+		"Tédio", "Hobbies", "Organização", "Rotina",
+	}
+	if len(stages) != len(wantTitles) {
+		t.Fatalf("esperava %d etapas, veio %d: %+v", len(wantTitles), len(stages), stages)
+	}
+	for i, title := range wantTitles {
+		if stages[i].Title != title {
+			t.Errorf("etapa %d = %q, esperava %q", i, stages[i].Title, title)
+		}
+	}
+
+	if got := len(stages[0].Items); got != 3 {
+		t.Errorf("Tasks deveria ter 3 itens, tem %d", got)
+	}
+	if got := len(stages[1].Items); got != 5 {
+		t.Errorf("Estudos deveria ter 5 itens, tem %d", got)
+	}
+	for _, it := range stages[1].Items {
+		if it.Category != "Estudos" {
+			t.Errorf("item de Estudos com categoria errada: %+v", it)
+		}
+	}
+}
+
+func TestStagesWithoutTasks(t *testing.T) {
+	items := []Item{
+		{Section: "Hábitos", Category: "Social", Desc: "a"},
+		{Section: "Hábitos", Category: "Estudos", Desc: "b"},
+		{Section: "Hábitos", Category: "Social", Desc: "c"},
+	}
+	stages := Stages(items)
+	if len(stages) != 2 || stages[0].Title != "Social" || stages[1].Title != "Estudos" {
+		t.Fatalf("ordem inesperada: %+v", stages)
+	}
+	if len(stages[0].Items) != 2 {
+		t.Errorf("Social deveria agrupar 2 itens: %+v", stages[0])
 	}
 }
 
@@ -189,15 +267,6 @@ func TestRenderGroupsTasksFirst(t *testing.T) {
 	wantTasks := "2026-10-23 08:00\n\n# Tasks\n\n- [ ] 10 min (U) - escrever\n\n---\n# Hábitos\n\n## Estudos\n- [ ] 20 min (I) - estudar\n\n---\n# Extra\n\n"
 	if got != wantTasks {
 		t.Errorf("ordem inesperada\n--- got ---\n%q\n", got)
-	}
-}
-
-func TestLabel(t *testing.T) {
-	if got := (Item{Desc: "tarefa"}).Label(); got != "tarefa" {
-		t.Errorf("label sem categoria = %q", got)
-	}
-	if got := (Item{Category: "Estudos", Desc: "SQL"}).Label(); got != "[Estudos] SQL" {
-		t.Errorf("label com categoria = %q", got)
 	}
 }
 

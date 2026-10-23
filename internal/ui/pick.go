@@ -11,6 +11,9 @@ import (
 	"strings"
 )
 
+// ErrCanceled indica que o usuário cancelou a interação (Esc).
+var ErrCanceled = errors.New("cancelado")
+
 // stdin é compartilhado entre as perguntas para não perder linhas já
 // bufferizadas quando o input vem de um pipe.
 var stdin = bufio.NewReader(os.Stdin)
@@ -27,17 +30,17 @@ func Pick(prompt string, items []string) (string, error) {
 	return pickPlain(prompt, items)
 }
 
-// PickMulti deixa o usuário escolher vários itens. Com fzf, Tab marca e
-// Enter confirma; sem fzf, aceita índices separados por espaço/vírgula
-// (ex.: "1 3 5"). Retorna nil se cancelar.
-func PickMulti(prompt string, items []string) ([]string, error) {
+// Toggle mostra uma lista onde Enter marca/desmarca o item destacado e a
+// linha "✅" encerra a etapa. Devolve os índices marcados na ordem original.
+// Esc devolve ErrCanceled.
+func Toggle(prompt, finishLabel string, items []string) ([]int, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}
 	if path, err := exec.LookPath("fzf"); err == nil {
-		return pickFzfMulti(path, prompt, items)
+		return toggleFzf(path, prompt, finishLabel, items)
 	}
-	return pickPlainMulti(prompt, items)
+	return togglePlain(prompt, finishLabel, items)
 }
 
 // Input lê uma linha digitada pelo usuário.
@@ -67,32 +70,128 @@ func pickFzf(path, prompt string, items []string) (string, error) {
 	return strings.TrimRight(string(out), "\r\n"), nil
 }
 
-func pickFzfMulti(path, prompt string, items []string) ([]string, error) {
-	cmd := exec.Command(path,
-		"--multi",
-		"--no-sort",
-		"--header=Tab marca vários, Enter confirma",
-		"--prompt="+prompt,
-	)
-	cmd.Stdin = strings.NewReader(strings.Join(items, "\n"))
-	cmd.Stderr = os.Stderr // a interface do fzf desenha aqui
+// toggleFzf roda uma invocação de fzf por tecla. Cada linha começa com um ID
+// oculto (--with-nth=2..), o que evita ambiguidade quando há labels iguais.
+func toggleFzf(path, prompt, finishLabel string, items []string) ([]int, error) {
+	marked := make([]bool, len(items))
+	cursor := 2 // depois da linha "✅"; aprimorado a cada marcação
 
-	out, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return nil, nil // Esc/Ctrl+C
+	for {
+		count := 0
+		for _, m := range marked {
+			if m {
+				count++
+			}
 		}
-		return nil, err
-	}
 
-	var chosen []string
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\r\n"), "\n") {
-		if line != "" {
-			chosen = append(chosen, line)
+		rows := make([]string, 0, len(items)+1)
+		rows = append(rows, fmt.Sprintf("-1\t%s (%d selecionado%s)", finishLabel, count, plural(count)))
+		for i, it := range items {
+			mark := "[ ]"
+			if marked[i] {
+				mark = "[x]"
+			}
+			rows = append(rows, fmt.Sprintf("%d\t%s %s", i, mark, it))
+		}
+
+		pos := cursor
+		if pos < 1 || pos > len(rows) {
+			pos = 1
+		}
+
+		cmd := exec.Command(path,
+			"--no-multi",
+			"--no-sort",
+			"--delimiter=\t",
+			"--with-nth=2..",
+			"--prompt="+prompt,
+			"--header=Enter marca/desmarca · Esc cancela",
+			fmt.Sprintf("--bind=start:pos(%d)", pos),
+		)
+		cmd.Stdin = strings.NewReader(strings.Join(rows, "\n"))
+		cmd.Stderr = os.Stderr // a interface do fzf desenha aqui
+
+		out, err := cmd.Output()
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				return nil, ErrCanceled
+			}
+			return nil, err
+		}
+
+		id, _, _ := strings.Cut(strings.TrimRight(string(out), "\r\n"), "\t")
+		if id == "-1" {
+			return markedIndices(marked), nil
+		}
+
+		n, convErr := strconv.Atoi(id)
+		if convErr != nil || n < 0 || n >= len(items) {
+			continue
+		}
+		marked[n] = !marked[n]
+		cursor = n + 2
+	}
+}
+
+func togglePlain(prompt, finishLabel string, items []string) ([]int, error) {
+	marked := make([]bool, len(items))
+
+	for {
+		count := 0
+		for _, m := range marked {
+			if m {
+				count++
+			}
+		}
+
+		fmt.Fprintln(os.Stderr, prompt)
+		fmt.Fprintf(os.Stderr, "0) %s (%d selecionado%s)\n", finishLabel, count, plural(count))
+		for i, it := range items {
+			mark := "[ ]"
+			if marked[i] {
+				mark = "[x]"
+			}
+			fmt.Fprintf(os.Stderr, "%d) %s %s\n", i+1, mark, it)
+		}
+		fmt.Fprint(os.Stderr, "#? (Enter conclui) ")
+
+		line, err := stdin.ReadString('\n')
+		if err != nil && line == "" {
+			return markedIndices(marked), nil // EOF conclui
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" {
+			return markedIndices(marked), nil
+		}
+
+		n, convErr := strconv.Atoi(line)
+		if convErr != nil || n < 0 || n > len(items) {
+			continue
+		}
+		if n == 0 {
+			return markedIndices(marked), nil
+		}
+		marked[n-1] = !marked[n-1]
+	}
+}
+
+func markedIndices(marked []bool) []int {
+	var out []int
+	for i, m := range marked {
+		if m {
+			out = append(out, i)
 		}
 	}
-	return chosen, nil
+	return out
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func pickPlain(prompt string, items []string) (string, error) {
@@ -111,34 +210,4 @@ func pickPlain(prompt string, items []string) (string, error) {
 		return "", nil
 	}
 	return items[n-1], nil
-}
-
-func pickPlainMulti(prompt string, items []string) ([]string, error) {
-	fmt.Fprintln(os.Stderr, prompt)
-	for i, it := range items {
-		fmt.Fprintf(os.Stderr, "%d) %s\n", i+1, it)
-	}
-	fmt.Fprint(os.Stderr, "#? (ex.: 1 3 5) ")
-
-	line, err := stdin.ReadString('\n')
-	if err != nil && line == "" {
-		return nil, nil
-	}
-
-	// TrimSpace antes de separar: o '\n' final não é separador para FieldsFunc.
-	fields := strings.FieldsFunc(strings.TrimSpace(line), func(r rune) bool {
-		return r == ' ' || r == ',' || r == '\t'
-	})
-
-	var chosen []string
-	seen := map[int]bool{}
-	for _, f := range fields {
-		n, convErr := strconv.Atoi(f)
-		if convErr != nil || n < 1 || n > len(items) || seen[n] {
-			continue
-		}
-		seen[n] = true
-		chosen = append(chosen, items[n-1])
-	}
-	return chosen, nil
 }

@@ -36,6 +36,10 @@ var newCmd = &cobra.Command{
 	Short:   "Cria a daylist no terminal (substitui o antigo -d)",
 	Long: `Cria a daylist escolhendo as tasks pendentes da weeklist da semana atual.
 
+A seleção vai por etapas: primeiro # Tasks, depois cada categoria de hábito.
+Em cada etapa, Enter marca/desmarca e "✅ Concluir" encerra; em seguida são
+perguntados tempo e prioridade dos itens escolhidos naquela etapa.
+
 Por padrão cria a daylist de amanhã. Se a daylist de hoje ainda não existir,
 pergunta se você quer criar a de hoje ou a de amanhã. As flags pulam a pergunta.`,
 	Args: cobra.NoArgs,
@@ -94,7 +98,7 @@ func resolveTargetDate() (time.Time, error) {
 	return now.AddDate(0, 0, 1), nil
 }
 
-// createDaylist executa o fluxo interativo e grava (ou só mostra, em dry-run).
+// createDaylist executa o wizard por etapas e grava (ou só mostra, em dry-run).
 func createDaylist(target time.Time, dryRun bool) error {
 	path := v.DaylistFile(target)
 	if fileExists(path) {
@@ -118,21 +122,45 @@ func createDaylist(target time.Time, dryRun bool) error {
 		return nil
 	}
 
-	selected, err := pickItems(items)
-	if err != nil {
-		return err
-	}
-	if len(selected) == 0 {
-		fmt.Println("Nenhum item selecionado.")
-		return nil
+	stages := daylist.Stages(items)
+	var resolved []daylist.Resolved
+
+	for i, stage := range stages {
+		labels := make([]string, len(stage.Items))
+		for j, it := range stage.Items {
+			labels[j] = it.Desc
+		}
+
+		prompt := fmt.Sprintf("Etapa %d/%d · %s › ", i+1, len(stages), stage.Title)
+		idxs, err := ui.Toggle(prompt, "✅ Concluir "+stage.Title, labels)
+		if errors.Is(err, ui.ErrCanceled) {
+			fmt.Println("Cancelado.")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		selected := make([]daylist.Item, len(idxs))
+		for k, idx := range idxs {
+			selected[k] = stage.Items[idx]
+		}
+
+		stageResolved, err := resolveItems(selected)
+		if err != nil {
+			return err
+		}
+		if stageResolved == nil { // cancelou na duração/prioridade
+			fmt.Println("Cancelado.")
+			return nil
+		}
+
+		printStageSummary(stage.Title, stageResolved)
+		resolved = append(resolved, stageResolved...)
 	}
 
-	resolved, err := resolveItems(selected)
-	if err != nil {
-		return err
-	}
-	if resolved == nil {
-		fmt.Println("Cancelado.")
+	if len(resolved) == 0 {
+		fmt.Println("Nenhum item selecionado.")
 		return nil
 	}
 
@@ -151,31 +179,22 @@ func createDaylist(target time.Time, dryRun bool) error {
 	return nil
 }
 
-// pickItems mostra o seletor múltiplo e devolve os itens escolhidos na ordem
-// da weeklist. Labels repetidos são resolvidos em sequência.
-func pickItems(items []daylist.Item) ([]daylist.Item, error) {
-	labels := make([]string, len(items))
-	byLabel := make(map[string][]int, len(items))
-	for i, it := range items {
-		labels[i] = it.Label()
-		byLabel[labels[i]] = append(byLabel[labels[i]], i)
+// printStageSummary mostra o que ficou definido na etapa antes de ir para a
+// próxima.
+func printStageSummary(title string, items []daylist.Resolved) {
+	if len(items) == 0 {
+		return
 	}
 
-	chosen, err := ui.PickMulti("Escolha as tasks: ", labels)
-	if err != nil {
-		return nil, err
+	word := "itens"
+	if len(items) == 1 {
+		word = "item"
 	}
-
-	var out []daylist.Item
-	for _, label := range chosen {
-		idxs := byLabel[label]
-		if len(idxs) == 0 {
-			continue
-		}
-		out = append(out, items[idxs[0]])
-		byLabel[label] = idxs[1:]
+	fmt.Printf("%s — %d %s:\n", title, len(items), word)
+	for _, it := range items {
+		fmt.Printf("  - %s (%s) - %s\n", it.FinalTime, it.FinalFlag, it.Desc)
 	}
-	return out, nil
+	fmt.Println()
 }
 
 // resolveItems pergunta tempo e prioridade do que ainda está indefinido.
@@ -210,8 +229,9 @@ func resolveItems(selected []daylist.Item) ([]daylist.Resolved, error) {
 }
 
 func resolveTime(it daylist.Item) (string, bool, error) {
-	if !isShortTime(it.Time) {
-		return it.Time, true, nil
+	current := strings.TrimSpace(it.Time)
+	if current != "" && !isShortTime(current) {
+		return current, true, nil
 	}
 
 	choice, err := ui.Pick(fmt.Sprintf("Duração de %q: ", it.Desc), durationOptions)
