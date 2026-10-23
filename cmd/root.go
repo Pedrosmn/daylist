@@ -27,11 +27,18 @@ var rootCmd = &cobra.Command{
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		today := time.Now()
-		if _, err := os.Stat(v.DaylistFile(today)); err == nil {
+		if fileExists(v.DaylistFile(today)) {
 			return v.OpenNote(today)
 		}
+
 		fmt.Println("Daylist de hoje ainda não existe. Criando...")
-		return v.QuickAdd("daylist")
+		if err := createDaylist(today, false); err != nil {
+			return err
+		}
+		if !fileExists(v.DaylistFile(today)) {
+			return nil // usuário cancelou
+		}
+		return v.OpenNote(today)
 	},
 }
 
