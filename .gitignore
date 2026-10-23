@@ -1,0 +1,5 @@
+# binário gerado por `go build`/`go install`
+/daylist
+
+# temporários da escrita atômica
+*.tmp
