@@ -1,148 +1,135 @@
-// Package timer implementa o timer por item da daylist.
-package timer
+package cmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
-	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+
+	"daylist/internal/timer"
+	"daylist/internal/ui"
 )
 
-var (
-	ErrNoTimer      = errors.New("nenhum timer rodando")
-	ErrLineNotFound = errors.New("linha original não encontrada")
-
-	// - [ ] 30min (I) - descrição
-	pendingRe = regexp.MustCompile(`^- \[ \] .+\(.*\) - .+$`)
-	descRe    = regexp.MustCompile(`^- \[ \] .+\(.*\) - `)
-)
-
-// State é salvo em JSON com os mesmos campos do script antigo.
-// Todos os tempos em milissegundos (epoch).
-type State struct {
-	File     string `json:"file"`
-	Line     string `json:"line"`
-	Desc     string `json:"desc"`
-	Start    int64  `json:"start"`
-	Started  int64  `json:"started"`
-	Elapsed  int64  `json:"elapsed"`
-	Paused   bool   `json:"paused"`
-	PausedAt int64  `json:"paused_at"`
+var timerCmd = &cobra.Command{
+	Use:     "timer",
+	Aliases: []string{"t"},
+	Short:   "Controla o timer de um item da daylist",
 }
 
-func nowMs() int64 { return time.Now().UnixMilli() }
+var timerStartCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Escolhe um item pendente e inicia o timer",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		statePath := v.StateFile()
 
-// New cria um timer para a linha escolhida. rel é o caminho da daylist relativo ao vault.
-func New(line, rel string) *State {
-	now := nowMs()
-	return &State{
-		File:    rel,
-		Line:    line,
-		Desc:    descRe.ReplaceAllString(line, ""),
-		Start:   now,
-		Started: now,
-	}
-}
-
-func Load(path string) (*State, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, ErrNoTimer
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	var s State
-	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, fmt.Errorf("estado do timer inválido: %w", err)
-	}
-	return &s, nil
-}
-
-func (s *State) Save(path string) error {
-	data, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
-}
-
-// PendingItems lista as linhas pendentes que ainda não têm ⏱.
-func PendingItems(daylistFile string) ([]string, error) {
-	data, err := os.ReadFile(daylistFile)
-	if err != nil {
-		return nil, err
-	}
-
-	var out []string
-	for _, line := range strings.Split(string(data), "\n") {
-		if pendingRe.MatchString(line) && !strings.Contains(line, "⏱") {
-			out = append(out, line)
+		if s, err := timer.Load(statePath); err == nil {
+			fmt.Printf("Já tem um timer rodando: %s\n", s.Desc)
+			return nil
+		} else if !errors.Is(err, timer.ErrNoTimer) {
+			return err
 		}
-	}
-	return out, nil
-}
 
-// Toggle pausa ou retoma. Retorna true se retomou.
-func (s *State) Toggle() bool {
-	now := nowMs()
-	if !s.Paused {
-		s.Elapsed += now - s.Start
-		s.Paused = true
-		s.PausedAt = now
-		return false
-	}
-	s.Start = now
-	s.Paused = false
-	s.PausedAt = 0
-	return true
-}
-
-func (s *State) TotalMs() int64 {
-	if s.Paused {
-		return s.Elapsed
-	}
-	return s.Elapsed + nowMs() - s.Start
-}
-
-// Finish marca o item como [x] e acrescenta " ⏱ Nmin (HH:MM–HH:MM)".
-// Grava num arquivo temporário e renomeia, para nunca corromper a daylist.
-func (s *State) Finish(daylistFile string) (int64, error) {
-	data, err := os.ReadFile(daylistFile)
-	if err != nil {
-		return 0, err
-	}
-
-	lines := strings.Split(string(data), "\n")
-	idx := -1
-	for i, l := range lines {
-		if l == s.Line {
-			idx = i
-			break
+		today := time.Now()
+		file := v.DaylistFile(today)
+		if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
+			fmt.Println("Daylist de hoje não encontrada.")
+			return nil
 		}
-	}
-	if idx < 0 {
-		return 0, ErrLineNotFound
-	}
 
-	mins := s.TotalMs() / 60000
-	startHM := time.UnixMilli(s.Started).Format("15:04")
-	endHM := time.Now().Format("15:04")
+		items, err := timer.PendingItems(file)
+		if err != nil {
+			return err
+		}
+		if len(items) == 0 {
+			fmt.Println("Nenhum item pendente no daylist de hoje.")
+			return nil
+		}
 
-	lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1) +
-		fmt.Sprintf(" ⏱ %dmin (%s–%s)", mins, startHM, endHM)
+		chosen, err := ui.Pick("Qual item começar? ", items)
+		if err != nil {
+			return err
+		}
+		if chosen == "" {
+			fmt.Println("Nenhum item selecionado.")
+			return nil
+		}
 
-	tmp := daylistFile + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
-		return 0, err
-	}
-	if err := os.Rename(tmp, daylistFile); err != nil {
-		os.Remove(tmp)
-		return 0, err
-	}
-	return mins, nil
+		s := timer.New(chosen, v.DaylistRel(today))
+		if err := s.Save(statePath); err != nil {
+			return err
+		}
+		fmt.Printf("Timer iniciado: %s\n", s.Desc)
+		return nil
+	},
+}
+
+var timerPauseCmd = &cobra.Command{
+	Use:   "pause",
+	Short: "Pausa ou retoma o timer",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		statePath := v.StateFile()
+
+		s, err := timer.Load(statePath)
+		if errors.Is(err, timer.ErrNoTimer) {
+			fmt.Println("Nenhum timer rodando.")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		resumed := s.Toggle()
+		if err := s.Save(statePath); err != nil {
+			return err
+		}
+
+		if resumed {
+			fmt.Printf("Timer retomado: %s\n", s.Desc)
+		} else {
+			fmt.Printf("Timer pausado: %s — %dmin acumulados\n", s.Desc, s.Elapsed/60000)
+		}
+		return nil
+	},
+}
+
+var timerStopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Para o timer e grava o tempo na daylist",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		statePath := v.StateFile()
+
+		s, err := timer.Load(statePath)
+		if errors.Is(err, timer.ErrNoTimer) {
+			fmt.Println("Nenhum timer rodando.")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		mins, err := s.Finish(v.DaylistFile(time.Now()))
+		if errors.Is(err, timer.ErrLineNotFound) {
+			fmt.Println("Linha original não encontrada (foi editada?). Timer descartado sem gravar.")
+			return os.Remove(statePath)
+		}
+		if err != nil {
+			return err // o estado é mantido, nada se perde
+		}
+
+		if err := os.Remove(statePath); err != nil {
+			fmt.Println("Aviso: não foi possível remover o estado do timer.")
+		}
+		fmt.Printf("Timer parado: %s — %dmin\n", s.Desc, mins)
+		return nil
+	},
+}
+
+func init() {
+	timerCmd.AddCommand(timerStartCmd, timerPauseCmd, timerStopCmd)
+	rootCmd.AddCommand(timerCmd)
 }
