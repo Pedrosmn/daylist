@@ -143,7 +143,11 @@ func (s *State) Finish(daylistFile string) (int64, error) {
 		return 0, ErrLineNotFound
 	}
 
-	mins := s.TotalMs() / 60000
+	ms := s.TotalMs()
+	mins := (ms + 30_000) / 60_000
+	if mins == 0 && ms > 0 {
+		mins = 1
+	}
 	startHM := time.UnixMilli(s.Started).Format("15:04")
 	endHM := time.Now().Format("15:04")
 

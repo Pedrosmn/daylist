@@ -3,11 +3,13 @@ package timer
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testState() *State {
@@ -110,5 +112,91 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("round-trip divergiu: got %+v, want %+v", got, want)
+	}
+}
+
+// pausedState cria um estado pausado com o tempo informado, para não depender
+// do relógio durante o teste.
+func pausedState(line string, elapsed time.Duration) *State {
+	return &State{
+		Line:     line,
+		Started:  1_699_999_000_000,
+		Elapsed:  elapsed.Milliseconds(),
+		Paused:   true,
+		PausedAt: 1_700_000_000_000,
+	}
+}
+
+// writeDaylist cria uma daylist temporária contendo a linha pendente.
+func writeDaylist(t *testing.T, line string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "2026-10-29.md")
+	if err := os.WriteFile(path, []byte("# Quinta\n\n"+line+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return path
+}
+
+func TestFinishRounding(t *testing.T) {
+	tests := []struct {
+		name    string
+		elapsed time.Duration
+		want    int64
+	}{
+		{"20s arredonda para 1min", 20 * time.Second, 1},
+		{"89s arredonda para 1min", 89 * time.Second, 1},
+		{"90s arredonda para 2min", 90 * time.Second, 2},
+		{"30min inteiros", 30 * time.Minute, 30},
+		{"1h30m40s arredonda para 91min", time.Hour + 30*time.Minute + 40*time.Second, 91},
+	}
+
+	line := testState().Line
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeDaylist(t, line)
+			s := pausedState(line, tc.elapsed)
+
+			got, err := s.Finish(path)
+			if err != nil {
+				t.Fatalf("Finish: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("minutos = %d, want %d", got, tc.want)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			content := string(data)
+			if !strings.Contains(content, "- [x]") {
+				t.Errorf("linha não foi marcada como concluída:\n%s", content)
+			}
+			if !strings.Contains(content, fmt.Sprintf(" ⏱ %dmin (", tc.want)) {
+				t.Errorf("linha sem o tempo esperado (%dmin):\n%s", tc.want, content)
+			}
+		})
+	}
+}
+
+func TestFinishZeroElapsed(t *testing.T) {
+	line := testState().Line
+	path := writeDaylist(t, line)
+	s := pausedState(line, 0)
+
+	got, err := s.Finish(path)
+	if err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+	if got != 0 {
+		t.Fatalf("minutos = %d, want 0", got)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(data), " ⏱ 0min (") {
+		t.Errorf("linha sem o tempo esperado (0min):\n%s", data)
 	}
 }
