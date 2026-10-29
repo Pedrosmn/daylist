@@ -34,8 +34,9 @@ var newCmd = &cobra.Command{
 	Use:     "new",
 	Aliases: []string{"n"},
 	Short:   "Cria a daylist no terminal (substitui o antigo -d)",
-	Long: `Cria a daylist escolhendo as tasks pendentes da weeklist da semana atual.
+	Long: `Cria a daylist escolhendo as tasks pendentes da weeklist da semana da data alvo.
 
+Se a weeklist da semana alvo não existir, usa a da semana anterior e avisa.
 A seleção vai por etapas: primeiro # Tasks, depois cada categoria de hábito.
 Em cada etapa, Enter marca/desmarca e "✅ Concluir" encerra; em seguida são
 perguntados tempo e prioridade dos itens escolhidos naquela etapa.
@@ -98,6 +99,27 @@ func resolveTargetDate() (time.Time, error) {
 	return now.AddDate(0, 0, 1), nil
 }
 
+// weeklistForTarget devolve a weeklist da semana da data alvo; se não
+// existir, cai para a semana anterior.
+func weeklistForTarget(v *vault.Vault, target time.Time) (path, week string, fallback bool, err error) {
+	targetWeek := vault.ISOWeek(target)
+	targetPath := v.WeeklistFile(targetWeek)
+	if fileExists(targetPath) {
+		return targetPath, targetWeek, false, nil
+	}
+
+	previousWeek := vault.ISOWeek(target.AddDate(0, 0, -7))
+	previousPath := v.WeeklistFile(previousWeek)
+	if fileExists(previousPath) {
+		return previousPath, previousWeek, true, nil
+	}
+
+	return "", "", false, fmt.Errorf(
+		"weeklist não encontrada para %s (nem a da semana anterior, %s)\ncaminhos tentados:\n  - %s\n  - %s\nrode `daylist week` para criar a weeklist da semana",
+		targetWeek, previousWeek, targetPath, previousPath,
+	)
+}
+
 // createDaylist executa o wizard por etapas e grava (ou só mostra, em dry-run).
 func createDaylist(target time.Time, dryRun bool) error {
 	path := v.DaylistFile(target)
@@ -106,19 +128,26 @@ func createDaylist(target time.Time, dryRun bool) error {
 		return nil
 	}
 
-	weeklistPath := v.WeeklistFile(vault.ISOWeek(time.Now()))
+	weeklistPath, week, fallback, err := weeklistForTarget(v, target)
+	if err != nil {
+		return err
+	}
+	if fallback {
+		fmt.Printf("Weeklist de %s não encontrada; usando a de %s.\n", vault.ISOWeek(target), week)
+	}
+
 	items, err := daylist.ParseWeeklist(weeklistPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf(
-			"weeklist da semana atual não encontrada: %s\nrode `daylist week` para criá-la",
-			weeklistPath,
+			"weeklist %s não encontrada: %s\nrode `daylist week` para criá-la",
+			week, weeklistPath,
 		)
 	}
 	if err != nil {
 		return err
 	}
 	if len(items) == 0 {
-		fmt.Println("Nenhum item pendente na weeklist da semana atual.")
+		fmt.Printf("Nenhum item pendente na weeklist de %s.\n", week)
 		return nil
 	}
 
