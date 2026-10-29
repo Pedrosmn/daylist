@@ -125,6 +125,19 @@ func (s *State) TotalMs() int64 {
 	return s.Elapsed + nowMs() - s.Start
 }
 
+// RoundedMinutes converte milissegundos em minutos arredondados para o mais
+// próximo. Sessões com tempo > 0 nunca resultam em 0.
+func RoundedMinutes(ms int64) int64 {
+	if ms <= 0 {
+		return 0
+	}
+	mins := (ms + 30_000) / 60_000
+	if mins == 0 {
+		mins = 1
+	}
+	return mins
+}
+
 // Finish marca o item como [x] e acrescenta " ⏱ Nmin (HH:MM–HH:MM)".
 // Grava num arquivo temporário e renomeia, para nunca corromper a daylist.
 func (s *State) Finish(daylistFile string) (int64, error) {
@@ -143,10 +156,7 @@ func (s *State) Finish(daylistFile string) (int64, error) {
 	}
 
 	ms := s.TotalMs()
-	mins := (ms + 30_000) / 60_000
-	if mins == 0 && ms > 0 {
-		mins = 1
-	}
+	mins := RoundedMinutes(ms)
 	startHM := time.UnixMilli(s.Started).Format("15:04")
 	endHM := time.Now().Format("15:04")
 

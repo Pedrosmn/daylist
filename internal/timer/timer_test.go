@@ -116,6 +116,33 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRoundedMinutes(t *testing.T) {
+	tests := []struct {
+		name string
+		ms   int64
+		want int64
+	}{
+		{"negativo", -1, 0},
+		{"zero", 0, 0},
+		{"1ms", 1, 1},
+		{"29s", (29 * time.Second).Milliseconds(), 1},
+		{"30s", (30 * time.Second).Milliseconds(), 1},
+		{"59s", (59 * time.Second).Milliseconds(), 1},
+		{"89s", (89 * time.Second).Milliseconds(), 1},
+		{"90s", (90 * time.Second).Milliseconds(), 2},
+		{"30min", (30 * time.Minute).Milliseconds(), 30},
+		{"1h30m40s", (time.Hour + 30*time.Minute + 40*time.Second).Milliseconds(), 91},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := RoundedMinutes(tc.ms); got != tc.want {
+				t.Errorf("RoundedMinutes(%d) = %d, want %d", tc.ms, got, tc.want)
+			}
+		})
+	}
+}
+
 // pausedState cria um estado pausado com o tempo informado, para não depender
 // do relógio durante o teste.
 func pausedState(line string, elapsed time.Duration) *State {
