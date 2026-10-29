@@ -1,11 +1,12 @@
 # Daylist — Revisão e roadmap
 
 > Revisão feita em 2026-10-23, sobre o código em `~/projects/daylist` (Go 1.23.2, Cobra 1.10.2).
-> As referências `arquivo:linha` correspondem a este commit; podem mudar depois.
+> Atualizado em 2026-10-29: correções 1–6 aplicadas e cobertas por testes.
+> As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 
 ## Estado atual
 
-O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas, testes nas partes de parsing/seleção e um wizard por etapas com busca fuzzy. O que falta está concentrado em **robustez do timer** e na **dependência residual do Obsidian** para `week`/`feedback`.
+O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com busca fuzzy. O que falta está concentrado na **dependência residual do Obsidian** para `week`/`feedback` e em melhorias de UX e engenharia.
 
 | Comando | Estado |
 |---|---|
@@ -13,7 +14,7 @@ O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regr
 | `daylist new` (`n`) | Wizard por etapas: Tasks → categorias de hábitos, com tempo/prioridade |
 | `daylist week` (`w`) | Ainda via QuickAdd (Obsidian) |
 | `daylist feedback` (`f`) | Ainda via QuickAdd (Obsidian) |
-| `daylist timer start/pause/stop` (`t`) | Funcional, mas com lacunas de robustez |
+| `daylist timer start/pause/stop` (`t`) | Funcional e robusto: estado atômico, busca tolerante e gravação na daylist de origem |
 | `daylist completion` | Gerado pelo Cobra |
 
 Estrutura:
@@ -28,52 +29,21 @@ internal/vault/       caminhos, URL do Obsidian, arquivos de alvo
 
 ---
 
-## 🐞 Correções prioritárias
+## ✅ Correções aplicadas (2026-10-29)
 
-### 1. Timer grava no arquivo errado quando vira o dia
-`cmd/timer.go:115` usa `v.DaylistFile(time.Now())` no `stop`, mas o estado já guarda `file` (`timer.State.File`, `internal/timer/timer.go:27`).
+As correções 1–6 do roadmap foram implementadas e cobertas por testes:
 
-Cenário: inicia 23:50, para 00:10 → procura a daylist de amanhã (que pode nem existir) e o tempo se perde.
+1. **Timer grava na daylist de origem** — o `stop` resolve o arquivo a partir de `State.File`, inclusive quando o timer vira o dia.
+2. **`Finish` tolerante a linhas editadas** — normalização de espaços/caixa, aceita `[x]` manual e correspondência parcial apenas quando única; erros específicos para ambiguidade e tempo já registrado.
+3. **`Save` atômico** — estado gravado em `.tmp` + `rename`, sem deixar JSON truncado.
+4. **Minutos arredondados** — arredonda para o minuto mais próximo e nunca grava `0min` em sessão com tempo > 0.
+5. **Weeklist da semana alvo** — o wizard usa a semana da data alvo e cai para a anterior com aviso.
+6. **Vault validado** — `Load` falha cedo com mensagem citando `DAYLIST_VAULT_PATH`.
 
-**Fix:** resolver o arquivo a partir do estado:
-```go
-file := filepath.Join(v.Path, filepath.FromSlash(s.File))
-mins, err := s.Finish(file)
-```
+## 🐞 Pendente
 
-### 2. Timer descarta o tempo se a linha for editada
-`internal/timer/timer.go:123` compara a linha **exata** (`if l == s.Line`). Qualquer edição — inclusive marcar `[x]` à mão — gera `ErrLineNotFound`, e `cmd/timer.go:118` **apaga o estado**.
-
-**Fix sugerido:**
-1. casar pela descrição normalizada (reutilizando `descRe`);
-2. depois por descrição parcial;
-3. se ainda não achar, **manter** o estado e imprimir instruções, em vez de descartar silenciosamente.
-
-### 3. `Save` do estado não é atômico
-`internal/timer/timer.go:66` grava com `os.WriteFile` direto. Crash/corrupção → `Load` falha com "estado do timer inválido" e `timer start` fica bloqueado.
-
-**Fix:** tmp + `rename`, como já é feito em `State.Finish` e `daylist.Write`.
-
-### 4. Sessões curtas gravam `0min`
-`internal/timer/timer.go:132` trunca (`TotalMs() / 60000`).
-
-**Fix:** arredondar (`(ms + 30_000) / 60_000`) ou garantir mínimo de 1 min para sessões acima de ~30s.
-
-### 5. Wizard lê a weeklist da semana errada
-`cmd/new.go:109` usa sempre `vault.ISOWeek(time.Now())`. Problemas:
-
-- `daylist n --date 2026-11-02` (outra semana) usa a weeklist desta semana;
-- criar a daylist de amanhã no domingo (vira semana ISO) usa a weeklist da semana anterior.
-
-**Fix:** usar a semana da **data alvo**; se ela não existir, cair para a semana anterior (é de onde o `week` copia os hábitos); se nenhuma existir, erro claro sugerindo `daylist week`.
-
-### 6. Vault não é validado
-`internal/vault/vault.go:28` (`Load`) aceita qualquer caminho. Um typo em `DAYLIST_VAULT_PATH` produz "weeklist não encontrada".
-
-**Fix:** validar com `os.Stat` e retornar algo como `vault não encontrado em "<path>" (veja DAYLIST_VAULT_PATH)`.
-
-### 7. Abertura de nota é Linux-only
-`internal/vault/vault.go:109` usa `xdg-open`. Se um dia usar macOS/WSL, vale escolher entre `open`, `xdg-open` e `wslview`.
+### Abertura de nota é Linux-only
+`internal/vault/vault.go` (`openURL`) usa `xdg-open`. Se um dia usar macOS/WSL, vale escolher entre `open`, `xdg-open` e `wslview`.
 
 ---
 
@@ -118,11 +88,11 @@ Os scripts são pequenos e o parser novo cobre quase tudo:
 
 ## 🧱 Engenharia
 
-- `cmd/new.go` tem 311 linhas; extrair o wizard para `internal/wizard` com **clock e picker injetados** torna `resolveTargetDate`, resolução de tempo/prioridade e totais testáveis sem TTY.
-- Testes que faltam:
-  - `timer.Finish`: linha editada, sessão atravessando meia-noite, arredondamento;
-  - `vault`: montagem de caminhos, semana ISO, validação do vault;
-  - `cmd`: escolha da data alvo e mapeamento de flags.
+- `cmd/new.go` tem ~340 linhas; extrair o wizard para `internal/wizard` com **clock e picker injetados** torna `resolveTargetDate`, resolução de tempo/prioridade e totais testáveis sem TTY.
+- Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos) e fluxos de `timer stop` e weeklist alvo em `cmd`.
+- Testes que ainda faltam:
+  - `cmd`: escolha da data alvo e mapeamento de flags;
+  - wizard de `new` sem TTY (depende da extração para `internal/wizard`).
 - `Makefile`: `build`, `install`, `test`, `vet`, `fmt`, `lint`; `go test -race -cover ./...`.
 - `daylist version` + `--version` (ldflags) — útil com binário em `~/go/bin`.
 - README curto: instalação, comandos, teclas do wizard, variáveis de ambiente, estrutura do vault.
@@ -144,11 +114,11 @@ Os scripts são pequenos e o parser novo cobre quase tudo:
 
 ## Ordem sugerida
 
-1. **Crítico e rápido**: correções 1–5 (timer + semana alvo + validação do vault).
+1. ✅ **Crítico e rápido**: correções 1–6 (timer + semana alvo + validação do vault) — concluído em 2026-10-29.
 2. **Rápido**: `timer status` + `--prompt` e `--height` no fzf.
 3. **Médio**: portar `week`/`feedback` para Go.
 4. **Médio**: voltar etapa, confirmação no Esc, etapa Extra, alerta de tempo total.
-5. **Contínuo**: README/Makefile/CI e testes de `cmd`, `vault` e `timer`.
+5. **Contínuo**: README/Makefile/CI, testes restantes de `cmd` e extração do wizard.
 
 ---
 
