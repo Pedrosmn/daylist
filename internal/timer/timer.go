@@ -68,7 +68,21 @@ func (s *State) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return writeAtomic(path, data)
+}
+
+// writeAtomic grava data num arquivo temporário e renomeia para path, para
+// nunca deixar o estado truncado se a escrita for interrompida.
+func writeAtomic(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // PendingItems lista as linhas pendentes que ainda não têm ⏱.
@@ -136,13 +150,5 @@ func (s *State) Finish(daylistFile string) (int64, error) {
 	lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1) +
 		fmt.Sprintf(" ⏱ %dmin (%s–%s)", mins, startHM, endHM)
 
-	tmp := daylistFile + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
-		return 0, err
-	}
-	if err := os.Rename(tmp, daylistFile); err != nil {
-		os.Remove(tmp)
-		return 0, err
-	}
-	return mins, nil
+	return mins, writeAtomic(daylistFile, []byte(strings.Join(lines, "\n")))
 }
