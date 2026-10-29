@@ -78,7 +78,7 @@ Sem cores, sem ANSI e sem descrição do item (a descrição pode ser longa e qu
 
 - `TestPromptTextRunning`: `Start` há 25min → `⏱ 25m`.
 - `TestPromptTextPaused`: `Elapsed: 25min`, `Paused: true` → `⏱ 25m ⏸`.
-- `TestPromptTextZero`: `Elapsed: 0`, `Paused: true` → `⏱ 0m`.
+- `TestPromptTextZero`: rodando com 0ms → `⏱ 0m`; pausado com 0ms → `⏱ 0m ⏸`.
 - `TestStatusTimerPromptNoState`: capturar stdout e confirmar string vazia + `nil`.
 - `TestStatusTimerPromptRunning`: capturar stdout e confirmar `⏱ 25m` (sem newline).
 - `TestStatusPromptFlagRegistered`: `timerStatusCmd.Flags().Lookup("prompt") != nil`.

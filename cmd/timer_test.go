@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -156,7 +157,7 @@ func TestStatusTextWithoutStarted(t *testing.T) {
 
 func TestStatusTimerNoState(t *testing.T) {
 	v := newTestVault(t)
-	if err := statusTimer(v); err != nil {
+	if err := statusTimer(v, false); err != nil {
 		t.Fatalf("statusTimer sem estado: %v", err)
 	}
 }
@@ -167,7 +168,7 @@ func TestStatusTimerCorruptState(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	err := statusTimer(v)
+	err := statusTimer(v, false)
 	if err == nil || !strings.Contains(err.Error(), "estado do timer inválido") {
 		t.Fatalf("erro = %v, want estado do timer inválido", err)
 	}
@@ -192,4 +193,101 @@ func TestTimerParentCommandShowsStatus(t *testing.T) {
 	if err := timerCmd.RunE(timerCmd, nil); err != nil {
 		t.Fatalf("timerCmd.RunE: %v", err)
 	}
+}
+
+func TestPromptTextRunning(t *testing.T) {
+	s := &timer.State{
+		Start: time.Now().Add(-25 * time.Minute).UnixMilli(),
+	}
+
+	if got, want := promptText(s), "⏱ 25m"; got != want {
+		t.Errorf("promptText = %q, want %q", got, want)
+	}
+}
+
+func TestPromptTextPaused(t *testing.T) {
+	s := &timer.State{
+		Paused:  true,
+		Elapsed: (25 * time.Minute).Milliseconds(),
+	}
+
+	if got, want := promptText(s), "⏱ 25m ⏸"; got != want {
+		t.Errorf("promptText = %q, want %q", got, want)
+	}
+}
+
+func TestPromptTextZero(t *testing.T) {
+	running := &timer.State{Start: time.Now().UnixMilli()}
+	if got, want := promptText(running), "⏱ 0m"; got != want {
+		t.Errorf("promptText rodando = %q, want %q", got, want)
+	}
+
+	paused := &timer.State{Paused: true}
+	if got, want := promptText(paused), "⏱ 0m ⏸"; got != want {
+		t.Errorf("promptText pausado = %q, want %q", got, want)
+	}
+}
+
+func TestStatusTimerPromptNoState(t *testing.T) {
+	v := newTestVault(t)
+
+	out, err := captureStdout(t, func() error { return statusTimer(v, true) })
+	if err != nil {
+		t.Fatalf("statusTimer: %v", err)
+	}
+	if out != "" {
+		t.Errorf("saída = %q, want vazia", out)
+	}
+}
+
+func TestStatusTimerPromptRunning(t *testing.T) {
+	v := newTestVault(t)
+	s := &timer.State{
+		Desc:  "escrever testes",
+		Start: time.Now().Add(-25 * time.Minute).UnixMilli(),
+	}
+	if err := s.Save(v.StateFile()); err != nil {
+		t.Fatalf("Save do estado: %v", err)
+	}
+
+	out, err := captureStdout(t, func() error { return statusTimer(v, true) })
+	if err != nil {
+		t.Fatalf("statusTimer: %v", err)
+	}
+	if out != "⏱ 25m" {
+		t.Errorf("saída = %q, want %q", out, "⏱ 25m")
+	}
+}
+
+func TestStatusPromptFlagRegistered(t *testing.T) {
+	if timerStatusCmd.Flags().Lookup("prompt") == nil {
+		t.Fatal("flag --prompt não registrada em timer status")
+	}
+}
+
+// captureStdout executa fn trocando os.Stdout por um pipe e devolve a saída.
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = old })
+
+	callErr := fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("close do pipe: %v", err)
+	}
+	data, readErr := io.ReadAll(r)
+	if readErr != nil {
+		t.Fatalf("leitura do pipe: %v", readErr)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("close da leitura: %v", err)
+	}
+	return string(data), callErr
 }

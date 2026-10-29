@@ -20,7 +20,7 @@ var timerCmd = &cobra.Command{
 	Short:   "Controla o timer de um item da daylist",
 	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return statusTimer(v)
+		return statusTimer(v, false)
 	},
 }
 
@@ -102,12 +102,14 @@ var timerPauseCmd = &cobra.Command{
 	},
 }
 
+var statusPrompt bool
+
 var timerStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Mostra o timer atual",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return statusTimer(v)
+		return statusTimer(v, statusPrompt)
 	},
 }
 
@@ -118,6 +120,15 @@ var timerStopCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return stopTimer(v)
 	},
+}
+
+// promptText devolve a saída curta para RPROMPT.
+func promptText(s *timer.State) string {
+	text := fmt.Sprintf("⏱ %dm", timer.RoundedMinutes(s.TotalMs()))
+	if s.Paused {
+		text += " ⏸"
+	}
+	return text
 }
 
 // statusText devolve a linha humana do timer atual.
@@ -137,14 +148,21 @@ func startedAt(s *timer.State) string {
 	return fmt.Sprintf(" (iniciado às %s)", time.UnixMilli(s.Started).Format("15:04"))
 }
 
-func statusTimer(v *vault.Vault) error {
+func statusTimer(v *vault.Vault, prompt bool) error {
 	s, err := timer.Load(v.StateFile())
 	if errors.Is(err, timer.ErrNoTimer) {
+		if prompt {
+			return nil // prompt limpo, sem mensagem
+		}
 		fmt.Println("Nenhum timer rodando.")
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if prompt {
+		fmt.Print(promptText(s))
+		return nil
 	}
 	fmt.Println(statusText(s))
 	return nil
@@ -199,6 +217,8 @@ func stopTimer(v *vault.Vault) error {
 }
 
 func init() {
+	timerStatusCmd.Flags().BoolVar(&statusPrompt, "prompt", false, "saída curta para RPROMPT (ex.: ⏱ 25m)")
+
 	timerCmd.AddCommand(timerStartCmd, timerPauseCmd, timerStopCmd, timerStatusCmd)
 	rootCmd.AddCommand(timerCmd)
 }
