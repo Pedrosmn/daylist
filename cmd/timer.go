@@ -18,6 +18,10 @@ var timerCmd = &cobra.Command{
 	Use:     "timer",
 	Aliases: []string{"t"},
 	Short:   "Controla o timer de um item da daylist",
+	Args:    cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return statusTimer(v)
+	},
 }
 
 var timerStartCmd = &cobra.Command{
@@ -98,6 +102,15 @@ var timerPauseCmd = &cobra.Command{
 	},
 }
 
+var timerStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Mostra o timer atual",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return statusTimer(v)
+	},
+}
+
 var timerStopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Para o timer e grava o tempo na daylist",
@@ -105,6 +118,36 @@ var timerStopCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return stopTimer(v)
 	},
+}
+
+// statusText devolve a linha humana do timer atual.
+func statusText(s *timer.State) string {
+	mins := timer.RoundedMinutes(s.TotalMs())
+	if s.Paused {
+		return fmt.Sprintf("Timer pausado: %s — %dmin acumulados%s", s.Desc, mins, startedAt(s))
+	}
+	return fmt.Sprintf("Timer rodando: %s — %dmin%s", s.Desc, mins, startedAt(s))
+}
+
+// startedAt devolve " (iniciado às HH:MM)" ou "" quando Started não existe.
+func startedAt(s *timer.State) string {
+	if s.Started <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (iniciado às %s)", time.UnixMilli(s.Started).Format("15:04"))
+}
+
+func statusTimer(v *vault.Vault) error {
+	s, err := timer.Load(v.StateFile())
+	if errors.Is(err, timer.ErrNoTimer) {
+		fmt.Println("Nenhum timer rodando.")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println(statusText(s))
+	return nil
 }
 
 // timerDaylistPath resolve a daylist em que o timer começou, a partir do
@@ -156,6 +199,6 @@ func stopTimer(v *vault.Vault) error {
 }
 
 func init() {
-	timerCmd.AddCommand(timerStartCmd, timerPauseCmd, timerStopCmd)
+	timerCmd.AddCommand(timerStartCmd, timerPauseCmd, timerStopCmd, timerStatusCmd)
 	rootCmd.AddCommand(timerCmd)
 }
