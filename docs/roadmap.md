@@ -14,7 +14,7 @@ O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regr
 | `daylist new` (`n`) | Wizard por etapas: Tasks → categorias de hábitos, com tempo/prioridade |
 | `daylist week` (`w`) | Ainda via QuickAdd (Obsidian) |
 | `daylist feedback` (`f`) | Ainda via QuickAdd (Obsidian) |
-| `daylist timer start/pause/stop` (`t`) | Funcional e robusto: estado atômico, busca tolerante e gravação na daylist de origem |
+| `daylist timer start/pause/stop/status` (`t`) | Funcional e robusto: estado atômico, busca tolerante, gravação na daylist de origem e status (incl. `--prompt`) |
 | `daylist completion` | Gerado pelo Cobra |
 
 Estrutura:
@@ -78,9 +78,7 @@ Os scripts são pequenos e o parser novo cobre quase tudo:
 
 ## ⏱️ Timer: lacunas
 
-- `daylist timer status` — item atual, tempo decorrido, pausado ou não.
-- `daylist timer status --prompt` — saída curta (`⏱ 25m`) para usar no `RPROMPT` do zsh. Esse recurso existia no script antigo e se perdeu na migração.
-- `daylist timer` sem subcomando mostra o status (hoje só imprime a ajuda).
+- ✅ `timer status`, `timer status --prompt` e `timer` sem subcomando (entregues em 2026-10-29).
 - Aviso/auto-stop quando o timer passar de N horas ou virar o dia.
 - Estado do timer vive em `.daylist-timer-state.json` na raiz do vault; considerar `$XDG_STATE_HOME/daylist/` para não poluir/sincronizar o vault.
 
@@ -89,7 +87,7 @@ Os scripts são pequenos e o parser novo cobre quase tudo:
 ## 🧱 Engenharia
 
 - `cmd/new.go` tem ~340 linhas; extrair o wizard para `internal/wizard` com **clock e picker injetados** torna `resolveTargetDate`, resolução de tempo/prioridade e totais testáveis sem TTY.
-- Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos) e fluxos de `timer stop` e weeklist alvo em `cmd`.
+- Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos), fluxos de `timer stop` e weeklist alvo em `cmd`, e flags/erros do fzf em `ui`.
 - Testes que ainda faltam:
   - `cmd`: escolha da data alvo e mapeamento de flags;
   - wizard de `new` sem TTY (depende da extração para `internal/wizard`).
@@ -115,7 +113,7 @@ Os scripts são pequenos e o parser novo cobre quase tudo:
 ## Ordem sugerida
 
 1. ✅ **Crítico e rápido**: correções 1–6 (timer + semana alvo + validação do vault) — concluído em 2026-10-29.
-2. **Rápido**: `timer status` + `--prompt` e `--height` no fzf — plano em [`plans/timer-status-fzf/00-visao-geral.md`](plans/timer-status-fzf/00-visao-geral.md).
+2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29; plano em [`plans/timer-status-fzf/00-visao-geral.md`](plans/timer-status-fzf/00-visao-geral.md).
 3. **Médio**: portar `week`/`feedback` para Go.
 4. **Médio**: voltar etapa, confirmação no Esc, etapa Extra, alerta de tempo total.
 5. **Contínuo**: README/Makefile/CI, testes restantes de `cmd` e extração do wizard.

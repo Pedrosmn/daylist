@@ -54,15 +54,36 @@ func Input(prompt string) (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
+// fzfLayoutArgs mantém a lista compacta e preserva o contexto da etapa anterior.
+func fzfLayoutArgs() []string {
+	return []string{"--height=70%", "--border", "--info=inline"}
+}
+
+// fzfCanceled reconhece os códigos de cancelamento/sem match do fzf:
+// 1 = sem match, 130 = interrompido. Outros erros (ex.: 2, opção inválida)
+// devem ser propagados.
+func fzfCanceled(err error) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	switch exitErr.ExitCode() {
+	case 1, 130:
+		return true
+	default:
+		return false
+	}
+}
+
 func pickFzf(path, prompt string, items []string) (string, error) {
-	cmd := exec.Command(path, "--prompt="+prompt)
+	args := append(fzfLayoutArgs(), "--prompt="+prompt)
+	cmd := exec.Command(path, args...)
 	cmd.Stdin = strings.NewReader(strings.Join(items, "\n"))
 	cmd.Stderr = os.Stderr // a interface do fzf desenha aqui
 
 	out, err := cmd.Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if fzfCanceled(err) {
 			return "", nil // Esc/Ctrl+C ou sem match
 		}
 		return "", err
@@ -99,7 +120,7 @@ func toggleFzf(path, prompt, finishLabel string, items []string) ([]int, error) 
 			pos = 1
 		}
 
-		cmd := exec.Command(path,
+		cmd := exec.Command(path, append(fzfLayoutArgs(),
 			"--no-multi",
 			"--no-sort",
 			"--delimiter=\t",
@@ -107,14 +128,13 @@ func toggleFzf(path, prompt, finishLabel string, items []string) ([]int, error) 
 			"--prompt="+prompt,
 			"--header=Enter marca/desmarca · Esc cancela",
 			fmt.Sprintf("--bind=start:pos(%d)", pos),
-		)
+		)...)
 		cmd.Stdin = strings.NewReader(strings.Join(rows, "\n"))
 		cmd.Stderr = os.Stderr // a interface do fzf desenha aqui
 
 		out, err := cmd.Output()
 		if err != nil {
-			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) {
+			if fzfCanceled(err) {
 				return nil, ErrCanceled
 			}
 			return nil, err
