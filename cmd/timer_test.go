@@ -1,0 +1,115 @@
+package cmd
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"daylist/internal/timer"
+	"daylist/internal/vault"
+)
+
+func newTestVault(t *testing.T) *vault.Vault {
+	t.Helper()
+	return &vault.Vault{Name: "teste", Path: t.TempDir()}
+}
+
+func TestTimerDaylistPath(t *testing.T) {
+	v := &vault.Vault{Path: filepath.Join(string(filepath.Separator), "vault")}
+	s := &timer.State{File: "Fleeting Notes/Daily/Days/2026-10-29.md"}
+
+	want := filepath.Join(v.Path, "Fleeting Notes", "Daily", "Days", "2026-10-29.md")
+	if got := timerDaylistPath(v, s); got != want {
+		t.Fatalf("timerDaylistPath = %q, want %q", got, want)
+	}
+}
+
+func TestTimerStopUsesStateDaylist(t *testing.T) {
+	v := newTestVault(t)
+
+	// Uma daylist que não é a de hoje: o stop deve gravar nela mesmo assim.
+	rel := vault.DaysDir + "/2020-01-02.md"
+	path := filepath.Join(v.Path, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	line := "- [ ] 30min (I) - tarefa de outro dia"
+	if err := os.WriteFile(path, []byte("# 2020-01-02\n\n"+line+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	s := &timer.State{
+		File:     rel,
+		Line:     line,
+		Desc:     "tarefa de outro dia",
+		Started:  1_577_934_000_000,
+		Elapsed:  (5 * time.Minute).Milliseconds(),
+		Paused:   true,
+		PausedAt: 1_577_934_300_000,
+	}
+	if err := s.Save(v.StateFile()); err != nil {
+		t.Fatalf("Save do estado: %v", err)
+	}
+
+	if err := stopTimer(v); err != nil {
+		t.Fatalf("stopTimer: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile da daylist: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "- [x]") || !strings.Contains(content, " ⏱ 5min (") {
+		t.Fatalf("tempo não foi gravado na daylist do estado:\n%s", content)
+	}
+
+	if _, err := os.Stat(v.StateFile()); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("estado do timer não foi removido após sucesso: err = %v", err)
+	}
+	if _, err := os.Stat(v.DaylistFile(time.Now())); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("daylist de hoje foi criada/alterada indevidamente: err = %v", err)
+	}
+}
+
+func TestTimerStopMissingDaylistKeepsState(t *testing.T) {
+	v := newTestVault(t)
+
+	rel := vault.DaysDir + "/2020-01-02.md"
+	path := filepath.Join(v.Path, filepath.FromSlash(rel))
+	s := &timer.State{
+		File:     rel,
+		Line:     "- [ ] 30min (I) - tarefa de outro dia",
+		Desc:     "tarefa de outro dia",
+		Started:  1_577_934_000_000,
+		Elapsed:  (5 * time.Minute).Milliseconds(),
+		Paused:   true,
+		PausedAt: 1_577_934_300_000,
+	}
+	if err := s.Save(v.StateFile()); err != nil {
+		t.Fatalf("Save do estado: %v", err)
+	}
+
+	err := stopTimer(v)
+	if err == nil {
+		t.Fatal("stopTimer deveria falhar quando a daylist do timer não existe")
+	}
+	if !strings.Contains(err.Error(), "daylist do timer não encontrada") || !strings.Contains(err.Error(), path) {
+		t.Fatalf("erro sem a mensagem/caminho esperados: %v", err)
+	}
+
+	got, loadErr := timer.Load(v.StateFile())
+	if loadErr != nil {
+		t.Fatalf("estado foi removido ou corrompido após a falha: %v", loadErr)
+	}
+	if !reflect.DeepEqual(got, s) {
+		t.Errorf("estado mudou após a falha: got %+v, want %+v", got, s)
+	}
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("daylist ausente foi criada indevidamente: err = %v", statErr)
+	}
+}

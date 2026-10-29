@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"daylist/internal/timer"
 	"daylist/internal/ui"
+	"daylist/internal/vault"
 )
 
 var timerCmd = &cobra.Command{
@@ -101,42 +103,56 @@ var timerStopCmd = &cobra.Command{
 	Short: "Para o timer e grava o tempo na daylist",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		statePath := v.StateFile()
+		return stopTimer(v)
+	},
+}
 
-		s, err := timer.Load(statePath)
-		if errors.Is(err, timer.ErrNoTimer) {
-			fmt.Println("Nenhum timer rodando.")
-			return nil
-		}
-		if err != nil {
-			return err
-		}
+// timerDaylistPath resolve a daylist em que o timer começou, a partir do
+// caminho relativo guardado no estado (não da data atual).
+func timerDaylistPath(v *vault.Vault, s *timer.State) string {
+	return filepath.Join(v.Path, filepath.FromSlash(s.File))
+}
 
-		mins, err := s.Finish(v.DaylistFile(time.Now()))
-		switch {
-		case errors.Is(err, timer.ErrLineNotFound):
-			fmt.Println(`Não achei a linha na daylist. O estado foi mantido; corrija a linha e rode "daylist timer stop" de novo.`)
-			return nil
-		case errors.Is(err, timer.ErrAmbiguousLine):
-			fmt.Println("Mais de uma linha corresponde à descrição; nada foi gravado. O estado foi mantido.")
-			fmt.Println(err)
-			return nil
-		case errors.Is(err, timer.ErrAlreadyRecorded):
-			if rmErr := os.Remove(statePath); rmErr != nil {
-				fmt.Println("Aviso: não foi possível remover o estado do timer.")
-			}
-			fmt.Println("O tempo já estava registrado nesta linha; estado do timer removido.")
-			return nil
-		case err != nil:
-			return err // o estado é mantido, nada se perde
-		}
+func stopTimer(v *vault.Vault) error {
+	statePath := v.StateFile()
 
-		if err := os.Remove(statePath); err != nil {
+	s, err := timer.Load(statePath)
+	if errors.Is(err, timer.ErrNoTimer) {
+		fmt.Println("Nenhum timer rodando.")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	file := timerDaylistPath(v, s)
+	mins, err := s.Finish(file)
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("daylist do timer não encontrada: %s (o estado foi mantido; use \"daylist timer stop\" de novo)", file)
+	}
+	switch {
+	case errors.Is(err, timer.ErrLineNotFound):
+		fmt.Println(`Não achei a linha na daylist. O estado foi mantido; corrija a linha e rode "daylist timer stop" de novo.`)
+		return nil
+	case errors.Is(err, timer.ErrAmbiguousLine):
+		fmt.Println("Mais de uma linha corresponde à descrição; nada foi gravado. O estado foi mantido.")
+		fmt.Println(err)
+		return nil
+	case errors.Is(err, timer.ErrAlreadyRecorded):
+		if rmErr := os.Remove(statePath); rmErr != nil {
 			fmt.Println("Aviso: não foi possível remover o estado do timer.")
 		}
-		fmt.Printf("Timer parado: %s — %dmin\n", s.Desc, mins)
+		fmt.Println("O tempo já estava registrado nesta linha; estado do timer removido.")
 		return nil
-	},
+	case err != nil:
+		return err // o estado é mantido, nada se perde
+	}
+
+	if err := os.Remove(statePath); err != nil {
+		fmt.Println("Aviso: não foi possível remover o estado do timer.")
+	}
+	fmt.Printf("Timer parado: %s — %dmin\n", s.Desc, mins)
+	return nil
 }
 
 func init() {
