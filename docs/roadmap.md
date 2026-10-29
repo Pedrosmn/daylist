@@ -113,7 +113,7 @@ Os scripts são pequenos e o parser novo cobre quase tudo:
 ## Ordem sugerida
 
 1. ✅ **Crítico e rápido**: correções 1–6 (timer + semana alvo + validação do vault) — concluído em 2026-10-29.
-2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29; plano em [`plans/timer-status-fzf/00-visao-geral.md`](plans/timer-status-fzf/00-visao-geral.md).
+2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29.
 3. **Médio**: portar `week`/`feedback` para Go.
 4. **Médio**: voltar etapa, confirmação no Esc, etapa Extra, alerta de tempo total.
 5. **Contínuo**: README/Makefile/CI, testes restantes de `cmd` e extração do wizard.
