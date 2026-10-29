@@ -40,6 +40,14 @@ func Load() (*Vault, error) {
 		path = filepath.Join(home, "documents", "Obsidian", "Vault 33")
 	}
 
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) || (err == nil && !info.IsDir()) {
+		return nil, fmt.Errorf("vault não encontrado em %q (ajuste DAYLIST_VAULT_PATH)", path)
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	return &Vault{Name: name, Path: path}, nil
 }
 
