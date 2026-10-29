@@ -12,8 +12,10 @@ import (
 )
 
 var (
-	ErrNoTimer      = errors.New("nenhum timer rodando")
-	ErrLineNotFound = errors.New("linha original não encontrada")
+	ErrNoTimer         = errors.New("nenhum timer rodando")
+	ErrLineNotFound    = errors.New("linha original não encontrada")
+	ErrAmbiguousLine   = errors.New("mais de uma linha corresponde à descrição")
+	ErrAlreadyRecorded = errors.New("tempo já registrado nesta linha")
 
 	// - [ ] 30min (I) - descrição
 	pendingRe = regexp.MustCompile(`^- \[ \] .+\(.*\) - .+$`)
@@ -132,15 +134,12 @@ func (s *State) Finish(daylistFile string) (int64, error) {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	idx := -1
-	for i, l := range lines {
-		if l == s.Line {
-			idx = i
-			break
-		}
+	idx, err := findLine(lines, s.Line)
+	if err != nil {
+		return 0, err
 	}
-	if idx < 0 {
-		return 0, ErrLineNotFound
+	if strings.Contains(lines[idx], "⏱") {
+		return 0, ErrAlreadyRecorded
 	}
 
 	ms := s.TotalMs()
@@ -151,8 +150,108 @@ func (s *State) Finish(daylistFile string) (int64, error) {
 	startHM := time.UnixMilli(s.Started).Format("15:04")
 	endHM := time.Now().Format("15:04")
 
-	lines[idx] = strings.Replace(lines[idx], "- [ ]", "- [x]", 1) +
+	line := lines[idx]
+	crlf := ""
+	if strings.HasSuffix(line, "\r") {
+		line = strings.TrimSuffix(line, "\r")
+		crlf = "\r"
+	}
+
+	line = strings.Replace(line, "- [ ]", "- [x]", 1) +
 		fmt.Sprintf(" ⏱ %dmin (%s–%s)", mins, startHM, endHM)
+	lines[idx] = line + crlf
 
 	return mins, writeAtomic(daylistFile, []byte(strings.Join(lines, "\n")))
+}
+
+// normalize reduz espaços em branco consecutivos e remove os das pontas.
+func normalize(s string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
+}
+
+// normalizeLine deixa a linha comparável: sem espaços extras, sem diferença
+// de caixa e sem distinguir "- [ ]" de "- [x]".
+func normalizeLine(s string) string {
+	n := strings.ToLower(normalize(s))
+	return strings.Replace(n, "- [x]", "- [ ]", 1)
+}
+
+func isPending(n string) bool { return strings.HasPrefix(n, "- [ ] ") }
+func isDone(n string) bool    { return strings.HasPrefix(n, "- [x] ") }
+
+// lineDescription extrai a descrição de uma linha, ignorando o checkbox e o
+// bloco "(...)" de duração/tipo. Se a entrada já for só a descrição, devolve
+// ela normalizada.
+func lineDescription(s string) string {
+	n := normalizeLine(s)
+	for _, prefix := range []string{"- [ ] ", "- [x] "} {
+		if strings.HasPrefix(n, prefix) {
+			n = strings.TrimPrefix(n, prefix)
+			break
+		}
+	}
+	if i := strings.Index(n, ") - "); i >= 0 {
+		return strings.TrimSpace(n[i+4:])
+	}
+	return n
+}
+
+func ambiguousError(lines []string, idxs []int) error {
+	candidates := make([]string, len(idxs))
+	for i, idx := range idxs {
+		candidates[i] = strings.TrimSpace(lines[idx])
+	}
+	return fmt.Errorf("%w:\n  - %s", ErrAmbiguousLine, strings.Join(candidates, "\n  - "))
+}
+
+// findLine localiza a linha da daylist correspondente, tolerando edições:
+// primeiro compara linha pendente normalizada, depois concluída e, por fim,
+// uma correspondência parcial que só é aceita se for única.
+func findLine(lines []string, desc string) (int, error) {
+	target := normalizeLine(desc)
+
+	var pending, done []int
+	for i, l := range lines {
+		n := normalizeLine(l)
+		if n != target {
+			continue
+		}
+		switch {
+		case isPending(n):
+			pending = append(pending, i)
+		case isDone(n):
+			done = append(done, i)
+		}
+	}
+	if len(pending) == 1 {
+		return pending[0], nil
+	}
+	if len(pending) > 1 {
+		return -1, ambiguousError(lines, pending)
+	}
+	if len(done) == 1 {
+		return done[0], nil
+	}
+	if len(done) > 1 {
+		return -1, ambiguousError(lines, done)
+	}
+
+	needle := strings.ToLower(lineDescription(desc))
+	if needle == "" {
+		return -1, ErrLineNotFound
+	}
+	var matches []int
+	for i, l := range lines {
+		if strings.Contains(strings.ToLower(normalize(l)), needle) {
+			matches = append(matches, i)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return -1, ErrLineNotFound
+	case 1:
+		return matches[0], nil
+	default:
+		return -1, ambiguousError(lines, matches)
+	}
 }

@@ -113,11 +113,21 @@ var timerStopCmd = &cobra.Command{
 		}
 
 		mins, err := s.Finish(v.DaylistFile(time.Now()))
-		if errors.Is(err, timer.ErrLineNotFound) {
-			fmt.Println("Linha original não encontrada (foi editada?). Timer descartado sem gravar.")
-			return os.Remove(statePath)
-		}
-		if err != nil {
+		switch {
+		case errors.Is(err, timer.ErrLineNotFound):
+			fmt.Println(`Não achei a linha na daylist. O estado foi mantido; corrija a linha e rode "daylist timer stop" de novo.`)
+			return nil
+		case errors.Is(err, timer.ErrAmbiguousLine):
+			fmt.Println("Mais de uma linha corresponde à descrição; nada foi gravado. O estado foi mantido.")
+			fmt.Println(err)
+			return nil
+		case errors.Is(err, timer.ErrAlreadyRecorded):
+			if rmErr := os.Remove(statePath); rmErr != nil {
+				fmt.Println("Aviso: não foi possível remover o estado do timer.")
+			}
+			fmt.Println("O tempo já estava registrado nesta linha; estado do timer removido.")
+			return nil
+		case err != nil:
 			return err // o estado é mantido, nada se perde
 		}
 
