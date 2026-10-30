@@ -1,5 +1,7 @@
 # daylist
 
+[![CI](https://github.com/Pedrosmn/daylist/actions/workflows/ci.yml/badge.svg)](https://github.com/Pedrosmn/daylist/actions/workflows/ci.yml)
+
 CLI em Go para gerenciar daylists, weeklists, feedback e timer em um vault do
 Obsidian. O fluxo principal é: gerar a weeklist, escolher as tasks e hábitos no
 terminal, criar a daylist do dia e registrar o tempo com o timer.
