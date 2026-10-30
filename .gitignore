@@ -3,3 +3,7 @@
 
 # temporários da escrita atômica
 *.tmp
+
+# artefatos de cobertura
+/coverage.out
+/coverage.html

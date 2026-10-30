@@ -4,6 +4,7 @@
 > Atualizado em 2026-10-29: correções 1–6 aplicadas e cobertas por testes.
 > Atualizado em 2026-10-30: item 3 (week/feedback) portado para Go; o QuickAdd não é mais usado para gerar notas.
 > Atualizado em 2026-10-30: item 4 (wizard) concluído com navegação Vim, voltar etapa, confirmação e tempo total.
+> Atualizado em 2026-10-30: README e Makefile adicionados; CI e testes restantes de `cmd` continuam pendentes.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 
 ## Estado atual
@@ -90,9 +91,10 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - Cobertura adicionada em 2026-10-30: `internal/week` (semanas ISO, parser tolerante, weeklist e feedback), comandos `week`/`feedback` (flags, dry-run, print-path, alvos legados), navegação/voltar/cancelar em `ui` e fluxo do wizard em `internal/wizard`.
 - Testes que ainda faltam:
   - `cmd`: escolha da data alvo e mapeamento de flags.
-- `Makefile`: `build`, `install`, `test`, `vet`, `fmt`, `lint`; `go test -race -cover ./...`.
+- ✅ `Makefile`: `build`, `install`, `test`, `test-race`, `vet`, `fmt`, `fmt-check`, `lint`, `cover`, `ci` e `clean`; usa `go test -race -cover ./...`.
+- ✅ `README.md`: instalação, configuração do vault, comandos, teclas do wizard, formato dos arquivos, desenvolvimento e limitações.
+- ⏳ CI no GitHub Actions: rodar `make ci` em push/PR.
 - `daylist version` + `--version` (ldflags) — útil com binário em `~/go/bin`.
-- README curto: instalação, comandos, teclas do wizard, variáveis de ambiente, estrutura do vault.
 - **Autodetectar o vault**: o Obsidian Flatpak registra os vaults em
   `~/.var/app/md.obsidian.Obsidian/config/obsidian/obsidian.json`
   (neste ambiente aponta para `/home/pedro/documents/Obsidian/Vault 33`). Ler esse arquivo (mais os caminhos de Linux/Snap/macOS) e usar `--vault` como override acaba com a dependência de `DAYLIST_VAULT_PATH`/`DAYLIST_VAULT_NAME`.
@@ -115,7 +117,7 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
 4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A etapa Extra fica adiada.
-5. **Contínuo**: README/Makefile/CI e testes restantes de `cmd`.
+5. **Contínuo**: ✅ README/Makefile; ⏳ CI e testes restantes de `cmd`.
 
 ---
 
