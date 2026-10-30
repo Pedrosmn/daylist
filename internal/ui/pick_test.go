@@ -97,6 +97,48 @@ func TestTogglePlainIgnoresInvalid(t *testing.T) {
 	}
 }
 
+func TestTogglePlainBackAndCancel(t *testing.T) {
+	setStdin(t, "h\n")
+	res, err := togglePlainOptions(ToggleOptions{
+		Prompt:    "escolha: ",
+		Items:     []string{"a", "b"},
+		AllowBack: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Action != ToggleBack {
+		t.Errorf("action = %v, want ToggleBack", res.Action)
+	}
+
+	setStdin(t, "q\n")
+	res, err = togglePlainOptions(ToggleOptions{
+		Prompt: "escolha: ",
+		Items:  []string{"a", "b"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Action != ToggleCancel {
+		t.Errorf("action = %v, want ToggleCancel", res.Action)
+	}
+}
+
+func TestTogglePlainStartsWithSelection(t *testing.T) {
+	setStdin(t, "l\n")
+	res, err := togglePlainOptions(ToggleOptions{
+		Prompt:   "escolha: ",
+		Items:    []string{"a", "b", "c"},
+		Selected: []int{2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Selected) != 1 || res.Selected[0] != 2 {
+		t.Errorf("selected = %v, want [2]", res.Selected)
+	}
+}
+
 func TestInputTrims(t *testing.T) {
 	setStdin(t, "  45  \n")
 	got, err := Input("min: ")
@@ -135,6 +177,28 @@ func fakeFzf(t *testing.T, exitCode int) string {
 	return argsFile
 }
 
+// fakeFzfReply instala um fzf falso que devolve uma resposta fixa.
+func fakeFzfReply(t *testing.T, reply string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("teste usa um script /bin/sh")
+	}
+
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "fzf-args")
+	script := filepath.Join(dir, "fzf")
+
+	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FZF_FAKE_ARGS\"\nprintf '%s\\n' \"$FZF_FAKE_REPLY\"\n"
+	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
+		t.Fatalf("WriteFile do fzf falso: %v", err)
+	}
+
+	t.Setenv("FZF_FAKE_ARGS", argsFile)
+	t.Setenv("FZF_FAKE_REPLY", reply)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return argsFile
+}
+
 func readFzfArgs(t *testing.T, path string) []string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -165,11 +229,24 @@ func TestPickFzfLayoutFlags(t *testing.T) {
 	}
 
 	args := readFzfArgs(t, argsFile)
-	for _, flag := range []string{"--height=70%", "--border", "--info=inline", "--prompt=escolha: "} {
+	for _, flag := range []string{
+		"--height=70%",
+		"--border",
+		"--info=inline",
+		"--layout=reverse",
+		"--disabled",
+		"--prompt=escolha: ",
+	} {
 		if !hasArg(args, flag) {
 			t.Errorf("flag %q ausente: %v", flag, args)
 		}
 	}
+	for _, arg := range args {
+		if strings.Contains(arg, "j:down,k:up") {
+			return
+		}
+	}
+	t.Errorf("binds Vim ausentes: %v", args)
 }
 
 func TestToggleFzfLayoutFlags(t *testing.T) {
@@ -188,6 +265,8 @@ func TestToggleFzfLayoutFlags(t *testing.T) {
 		"--height=70%",
 		"--border",
 		"--info=inline",
+		"--layout=reverse",
+		"--disabled",
 		"--delimiter=\t",
 		"--with-nth=2..",
 	} {
@@ -197,6 +276,75 @@ func TestToggleFzfLayoutFlags(t *testing.T) {
 	}
 	if !hasArg(args, "--bind=start:pos(2)") {
 		t.Errorf("flag --bind ausente: %v", args)
+	}
+}
+
+func TestToggleWithOptionsBackAndInitialSelection(t *testing.T) {
+	argsFile := fakeFzfReply(t, "-2\tvoltar")
+
+	res, err := ToggleWithOptions(ToggleOptions{
+		Prompt:      "escolha: ",
+		FinishLabel: "Concluir",
+		Items:       []string{"a", "b", "c"},
+		Selected:    []int{1},
+		AllowBack:   true,
+		Header:      "Etapa 2/3 · Estudos",
+	})
+	if err != nil {
+		t.Fatalf("ToggleWithOptions: %v", err)
+	}
+	if res.Action != ToggleBack {
+		t.Fatalf("action = %v, want ToggleBack", res.Action)
+	}
+	if len(res.Selected) != 1 || res.Selected[0] != 1 {
+		t.Fatalf("selected = %v, want [1]", res.Selected)
+	}
+
+	args := readFzfArgs(t, argsFile)
+	if !hasArg(args, "--bind=start:pos(4)") {
+		t.Errorf("posição inicial não considera as linhas de ação: %v", args)
+	}
+	for _, arg := range args {
+		if strings.Contains(arg, "h:pos(2)+accept") {
+			return
+		}
+	}
+	t.Errorf("bind de voltar ausente: %v", args)
+}
+
+func TestConfirmUsesSafeDefault(t *testing.T) {
+	fakeFzfReply(t, "Não, continuar")
+
+	ok, err := Confirm("Descartar tudo? ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("Confirm = true, want false")
+	}
+}
+
+func TestConfirmCanDiscard(t *testing.T) {
+	fakeFzfReply(t, "Sim, descartar")
+
+	ok, err := Confirm("Descartar tudo? ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("Confirm = false, want true")
+	}
+}
+
+func TestFzfIgnoreArgKeepsVimKeys(t *testing.T) {
+	arg := fzfIgnoreArg('j', 'k', 'g', 'G', 'h', 'l', 'q')
+	if !strings.Contains(arg, "a:ignore") {
+		t.Errorf("tecla imprimível não foi neutralizada: %s", arg)
+	}
+	for _, used := range []string{"j:ignore", "k:ignore", "g:ignore", "G:ignore", "h:ignore", "l:ignore", "q:ignore"} {
+		if strings.Contains(arg, used) {
+			t.Errorf("atalho %q não deveria ser ignorado: %s", used, arg)
+		}
 	}
 }
 

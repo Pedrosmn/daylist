@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"daylist/internal/daylist"
 	"daylist/internal/ui"
 	"daylist/internal/vault"
+	"daylist/internal/wizard"
 )
 
 var (
@@ -22,14 +22,6 @@ var (
 	newDryRun   bool
 )
 
-var durationOptions = []string{
-	"10 min", "15 min", "20 min", "30 min", "60 min", "120 min", "180 min", "Personalizado",
-}
-
-var flagOptions = []string{
-	"Nenhuma", "Importante (I)", "Urgente (U)", "Importante e Urgente (IU)",
-}
-
 var newCmd = &cobra.Command{
 	Use:     "new",
 	Aliases: []string{"n"},
@@ -38,8 +30,9 @@ var newCmd = &cobra.Command{
 
 Se a weeklist da semana alvo não existir, usa a da semana anterior e avisa.
 A seleção vai por etapas: primeiro # Tasks, depois cada categoria de hábito.
-Em cada etapa, Enter marca/desmarca e "✅ Concluir" encerra; em seguida são
-perguntados tempo e prioridade dos itens escolhidos naquela etapa.
+Em cada etapa, j/k (ou Ctrl-d/Ctrl-u) navegam, g/G vão ao início/fim,
+Enter/Espaço marcam/desmarcam, h volta, l conclui e q/Esc cancela.
+Ao final, o tempo total planejado é exibido.
 
 Por padrão cria a daylist de amanhã. Se a daylist de hoje ainda não existir,
 pergunta se você quer criar a de hoje ou a de amanhã. As flags pulam a pergunta.`,
@@ -152,48 +145,24 @@ func createDaylist(target time.Time, dryRun bool) error {
 	}
 
 	stages := daylist.Stages(items)
-	var resolved []daylist.Resolved
-
-	for i, stage := range stages {
-		labels := make([]string, len(stage.Items))
-		for j, it := range stage.Items {
-			labels[j] = it.Desc
-		}
-
-		prompt := fmt.Sprintf("Etapa %d/%d · %s › ", i+1, len(stages), stage.Title)
-		idxs, err := ui.Toggle(prompt, "✅ Concluir "+stage.Title, labels)
-		if errors.Is(err, ui.ErrCanceled) {
-			fmt.Println("Cancelado.")
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		selected := make([]daylist.Item, len(idxs))
-		for k, idx := range idxs {
-			selected[k] = stage.Items[idx]
-		}
-
-		stageResolved, err := resolveItems(selected)
-		if err != nil {
-			return err
-		}
-		if stageResolved == nil { // cancelou na duração/prioridade
-			fmt.Println("Cancelado.")
-			return nil
-		}
-
-		printStageSummary(stage.Title, stageResolved)
-		resolved = append(resolved, stageResolved...)
+	result, err := wizard.Run(wizard.Options{
+		Stages: stages,
+		UI:     uiPrompter{},
+		Out:    os.Stdout,
+	})
+	if err != nil {
+		return err
 	}
-
-	if len(resolved) == 0 {
+	if result.Canceled {
+		fmt.Println("Cancelado.")
+		return nil
+	}
+	if len(result.Resolved) == 0 {
 		fmt.Println("Nenhum item selecionado.")
 		return nil
 	}
 
-	content := daylist.Render(resolved, time.Now())
+	content := daylist.Render(result.Resolved, time.Now())
 
 	if dryRun {
 		fmt.Printf("--- Daylist de %s (dry-run, nada foi gravado) ---\n", target.Format("2006-01-02"))
@@ -208,120 +177,22 @@ func createDaylist(target time.Time, dryRun bool) error {
 	return nil
 }
 
-// printStageSummary mostra o que ficou definido na etapa antes de ir para a
-// próxima.
-func printStageSummary(title string, items []daylist.Resolved) {
-	if len(items) == 0 {
-		return
-	}
+type uiPrompter struct{}
 
-	word := "itens"
-	if len(items) == 1 {
-		word = "item"
-	}
-	fmt.Printf("%s — %d %s:\n", title, len(items), word)
-	for _, it := range items {
-		fmt.Printf("  - %s (%s) - %s\n", it.FinalTime, it.FinalFlag, it.Desc)
-	}
-	fmt.Println()
+func (uiPrompter) Pick(prompt string, items []string) (string, error) {
+	return ui.Pick(prompt, items)
 }
 
-// resolveItems pergunta tempo e prioridade do que ainda está indefinido.
-// Devolve nil quando o usuário cancela.
-func resolveItems(selected []daylist.Item) ([]daylist.Resolved, error) {
-	resolved := make([]daylist.Resolved, 0, len(selected))
-
-	for _, it := range selected {
-		finalTime, ok, err := resolveTime(it)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, nil
-		}
-
-		finalFlag, ok, err := resolveFlag(it)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, nil
-		}
-
-		resolved = append(resolved, daylist.Resolved{
-			Item:      it,
-			FinalTime: finalTime,
-			FinalFlag: finalFlag,
-		})
-	}
-	return resolved, nil
+func (uiPrompter) Toggle(opts ui.ToggleOptions) (ui.ToggleResult, error) {
+	return ui.ToggleWithOptions(opts)
 }
 
-func resolveTime(it daylist.Item) (string, bool, error) {
-	current := strings.TrimSpace(it.Time)
-	if current != "" && !isShortTime(current) {
-		return current, true, nil
-	}
-
-	choice, err := ui.Pick(fmt.Sprintf("Duração de %q: ", it.Desc), durationOptions)
-	if err != nil {
-		return "", false, err
-	}
-	if choice == "" { // Esc cancela o fluxo inteiro
-		return "", false, nil
-	}
-	if choice != "Personalizado" {
-		return choice, true, nil
-	}
-
-	for {
-		value, err := ui.Input("Duração personalizada (min): ")
-		if err != nil {
-			return "", false, err
-		}
-		mins, convErr := strconv.Atoi(value)
-		if convErr == nil && mins > 0 {
-			return fmt.Sprintf("%d min", mins), true, nil
-		}
-		fmt.Fprintln(os.Stderr, "Valor inválido, tente de novo (Ctrl+C para sair).")
-	}
+func (uiPrompter) Input(prompt string) (string, error) {
+	return ui.Input(prompt)
 }
 
-func resolveFlag(it daylist.Item) (string, bool, error) {
-	if it.Flag != "" {
-		return it.Flag, true, nil
-	}
-
-	choice, err := ui.Pick(fmt.Sprintf("Prioridade de %q: ", it.Desc), flagOptions)
-	if err != nil {
-		return "", false, err
-	}
-	if choice == "" { // Esc cancela
-		return "", false, nil
-	}
-	return flagValue(choice), true, nil
-}
-
-func flagValue(label string) string {
-	switch label {
-	case "Importante (I)":
-		return "I"
-	case "Urgente (U)":
-		return "U"
-	case "Importante e Urgente (IU)":
-		return "IU"
-	default:
-		return ""
-	}
-}
-
-// isShortTime: tempos "ST"/"xST" na weeklist pedem duração na hora.
-func isShortTime(t string) bool {
-	switch strings.ToUpper(strings.TrimSpace(t)) {
-	case "ST", "XST":
-		return true
-	}
-	return false
+func (uiPrompter) Confirm(prompt string) (bool, error) {
+	return ui.Confirm(prompt)
 }
 
 func fileExists(path string) bool {

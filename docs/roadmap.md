@@ -3,11 +3,12 @@
 > Revisão feita em 2026-10-23, sobre o código em `~/projects/daylist` (Go 1.23.2, Cobra 1.10.2).
 > Atualizado em 2026-10-29: correções 1–6 aplicadas e cobertas por testes.
 > Atualizado em 2026-10-30: item 3 (week/feedback) portado para Go; o QuickAdd não é mais usado para gerar notas.
+> Atualizado em 2026-10-30: item 4 (wizard) concluído com navegação Vim, voltar etapa, confirmação e tempo total.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 
 ## Estado atual
 
-O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com busca fuzzy. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O que falta está em melhorias de UX e engenharia.
+O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim (sem busca). `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O que falta está em melhorias de UX e engenharia.
 
 | Comando | Estado |
 |---|---|
@@ -25,7 +26,8 @@ cmd/                  root, new, week, feedback, timer
 internal/daylist/     parser tolerante + Stages + Render + Write
 internal/week/        semanas ISO, parser de hábitos, weeklist e feedback
 internal/timer/       estado do timer + marcação ⏱ na daylist
-internal/ui/          Pick (fzf/menu) + Toggle (wizard) + Input
+internal/wizard/      fluxo por etapas, voltar, resolução de tempo/prioridade e total
+internal/ui/          Pick (fzf/menu) + Toggle (wizard) + Input + Confirm
 internal/vault/       caminhos e URL do Obsidian
 ```
 
@@ -60,15 +62,16 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 
 ---
 
-## 🎨 UX do wizard
+## ✅ UX do wizard (2026-10-30)
 
-- **fzf com altura** (`--height=70% --border --info=inline`): hoje cada etapa limpa a tela; com altura, os resumos das etapas anteriores continuam visíveis.
-- **“↩ Voltar etapa”**: revisar uma categoria sem refazer as anteriores.
+- **Navegação Vim padrão** no fzf: `j`/`k`, `g`/`G`, `Ctrl-d`/`Ctrl-u`, `Enter`/`Espaço`, `h` para voltar, `l` para concluir e `q`/`Esc` para cancelar.
+- **Sem busca digitável** no fzf: `--disabled` e teclas imprimíveis neutralizadas; a lista é navegada apenas por movimento e marcação.
+- **“↩ Voltar etapa”**: `h` ou a linha de voltar reabre a etapa anterior preservando seleções, tempos e prioridades.
 - **Header com contagem**: `Etapa 2/9 · Estudos · 3 marcados · 5 no total`.
-- **Esc com itens marcados**: confirmar “descartar tudo?” (hoje perde todas as escolhas sem aviso).
-- **Etapa “Extra”**: capturar tasks livres para a seção `# Extra` (o template atual nunca a preenche).
-- **Alerta de tempo total planejado**: somar as durações e avisar quando passar de um limite (ex.: “4h30 de 6h disponíveis”).
-- **`ctrl-d` como atalho de concluir** etapa no fzf, além da linha `✅` (útil em listas longas).
+- **Esc/q com itens marcados**: confirma “descartar tudo?” antes de perder as escolhas.
+- **Tempo total planejado**: exibido ao final como valor único ou faixa (`1h45–1h55`); sem limite e sem alerta.
+- **Duração personalizada**: continua aceitando número via `Input`.
+- **Etapa “Extra”**: adiada; a seção `# Extra` continua vazia por enquanto.
 
 ---
 
@@ -82,12 +85,11 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 
 ## 🧱 Engenharia
 
-- `cmd/new.go` tem ~340 linhas; extrair o wizard para `internal/wizard` com **clock e picker injetados** torna `resolveTargetDate`, resolução de tempo/prioridade e totais testáveis sem TTY.
+- ✅ `cmd/new.go` foi reduzido; o wizard agora vive em `internal/wizard`, com `Prompter` injetado, e é testável sem TTY.
 - Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos), fluxos de `timer stop` e weeklist alvo em `cmd`, e flags/erros do fzf em `ui`.
-- Cobertura adicionada em 2026-10-30: `internal/week` (semanas ISO, parser tolerante, weeklist e feedback) e comandos `week`/`feedback` (flags, dry-run, print-path, alvos legados).
+- Cobertura adicionada em 2026-10-30: `internal/week` (semanas ISO, parser tolerante, weeklist e feedback), comandos `week`/`feedback` (flags, dry-run, print-path, alvos legados), navegação/voltar/cancelar em `ui` e fluxo do wizard em `internal/wizard`.
 - Testes que ainda faltam:
-  - `cmd`: escolha da data alvo e mapeamento de flags;
-  - wizard de `new` sem TTY (depende da extração para `internal/wizard`).
+  - `cmd`: escolha da data alvo e mapeamento de flags.
 - `Makefile`: `build`, `install`, `test`, `vet`, `fmt`, `lint`; `go test -race -cover ./...`.
 - `daylist version` + `--version` (ldflags) — útil com binário em `~/go/bin`.
 - README curto: instalação, comandos, teclas do wizard, variáveis de ambiente, estrutura do vault.
@@ -112,17 +114,19 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 1. ✅ **Crítico e rápido**: correções 1–6 (timer + semana alvo + validação do vault) — concluído em 2026-10-29.
 2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
-4. **Médio**: voltar etapa, confirmação no Esc, etapa Extra, alerta de tempo total.
-5. **Contínuo**: README/Makefile/CI, testes restantes de `cmd` e extração do wizard.
+4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A etapa Extra fica adiada.
+5. **Contínuo**: README/Makefile/CI e testes restantes de `cmd`.
 
 ---
 
 ## Apêndice — decisões já incorporadas no wizard por etapas
 
 - `# Tasks` é a primeira etapa; depois cada categoria de hábito na ordem da weeklist.
-- Enter marca/desmarca; `✅ Concluir <etapa>` finaliza; `Esc` cancela tudo sem gravar.
+- `j`/`k` navegam, `g`/`G` vão ao início/fim, `Ctrl-d`/`Ctrl-u` movem meia página e `Enter`/`Espaço` marcam/desmarcam.
+- `h` volta para a etapa anterior; `l` conclui a etapa; `q`/`Esc` cancelam, com confirmação quando há seleção.
 - Parser tolerante: `tempo (flag)`, `tempo`, `(flag)` e texto livre; `[x]` fica de fora.
 - Duração é perguntada quando o tempo está vazio ou é `ST`/`xST`; prioridade, quando a flag está vazia.
 - Tempo/prioridade são resolvidos por etapa, com resumo antes da próxima.
+- O total planejado é exibido ao final; tempos compostos viram faixa (`5/15 min` → `5–15 min`).
 - `new` grava a daylist de amanhã por padrão; se a de hoje não existir, pergunta qual criar; `--today`, `--tomorrow`, `--date` e `--dry-run` disponíveis.
 - `new` nunca abre o Obsidian; o `daylist` sem argumento abre ao final.
