@@ -2,18 +2,19 @@
 
 > Revisão feita em 2026-10-23, sobre o código em `~/projects/daylist` (Go 1.23.2, Cobra 1.10.2).
 > Atualizado em 2026-10-29: correções 1–6 aplicadas e cobertas por testes.
+> Atualizado em 2026-10-30: item 3 (week/feedback) portado para Go; o QuickAdd não é mais usado para gerar notas.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 
 ## Estado atual
 
-O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com busca fuzzy. O que falta está concentrado na **dependência residual do Obsidian** para `week`/`feedback` e em melhorias de UX e engenharia.
+O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com busca fuzzy. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O que falta está em melhorias de UX e engenharia.
 
 | Comando | Estado |
 |---|---|
 | `daylist` | Abre a daylist de hoje no Obsidian; se não existir, cria pelo wizard no terminal |
 | `daylist new` (`n`) | Wizard por etapas: Tasks → categorias de hábitos, com tempo/prioridade |
-| `daylist week` (`w`) | Ainda via QuickAdd (Obsidian) |
-| `daylist feedback` (`f`) | Ainda via QuickAdd (Obsidian) |
+| `daylist week` (`w`) | Gera em Go, sem QuickAdd; copia hábitos preservando tempo/prioridade |
+| `daylist feedback` (`f`) | Gera em Go, sem QuickAdd; resumo de hábitos por categoria |
 | `daylist timer start/pause/stop/status` (`t`) | Funcional e robusto: estado atômico, busca tolerante, gravação na daylist de origem e status (incl. `--prompt`) |
 | `daylist completion` | Gerado pelo Cobra |
 
@@ -22,9 +23,10 @@ Estrutura:
 ```
 cmd/                  root, new, week, feedback, timer
 internal/daylist/     parser tolerante + Stages + Render + Write
+internal/week/        semanas ISO, parser de hábitos, weeklist e feedback
 internal/timer/       estado do timer + marcação ⏱ na daylist
 internal/ui/          Pick (fzf/menu) + Toggle (wizard) + Input
-internal/vault/       caminhos, URL do Obsidian, arquivos de alvo
+internal/vault/       caminhos e URL do Obsidian
 ```
 
 ---
@@ -47,20 +49,14 @@ As correções 1–6 do roadmap foram implementadas e cobertas por testes:
 
 ---
 
-## 🚀 Maior ganho: portar `week` e `feedback` para Go
+## ✅ Maior ganho: `week` e `feedback` portados para Go (2026-10-30)
 
-Hoje os dois dependem do Obsidian e **falham em silêncio**: o CLI abre a URI, imprime sucesso e deixa `.daylist-weeklist-target.json` / `.daylist-feedback-target.json` na raiz do vault.
+Os dois comandos agora geram os arquivos localmente, sem QuickAdd e sem arquivos de alvo:
 
-Os scripts são pequenos e o parser novo cobre quase tudo:
+- **`daylist week [--current|--next]`** copia os hábitos da semana anterior preservando tempo e prioridade; apenas o checkbox volta para `[ ]`. Aceita o formato completo (`5 min (U) - AWS`), só tempo (`5 min - AWS`), só prioridade (`(U) - AWS`) e texto livre (`AWS`).
+- **`daylist feedback [--week YYYY-Www]`** conta os hábitos concluídos nas daylists de segunda a domingo, remove o sufixo `⏱` e monta o resumo por categoria.
 
-| Script | Tamanho | O que faz | Esforço |
-|---|---|---|---|
-| `weeklist_script.js` | ~70 linhas | copia hábitos da semana anterior, resetando tempo/flag para `xST ()` | baixo |
-| `feedback_script.js` | ~135 linhas | conta hábitos concluídos por categoria na semana e monta o resumo | baixo/médio |
-
-**Benefícios:** nenhuma dependência do QuickAdd para criar nada; sem arquivos de alvo órfãos; saída testável; o Obsidian fica só para abrir/editar notas.
-
-**Comandos resultantes:** `daylist week [--current|--next]`, `daylist feedback [--week YYYY-Www]`, ambos com `--dry-run` e `--print-path`.
+Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylists ausentes. Os scripts `scripts/weeklist_script.js` e `scripts/feedback_script.js` ficam no repositório como referência histórica.
 
 ---
 
@@ -88,6 +84,7 @@ Os scripts são pequenos e o parser novo cobre quase tudo:
 
 - `cmd/new.go` tem ~340 linhas; extrair o wizard para `internal/wizard` com **clock e picker injetados** torna `resolveTargetDate`, resolução de tempo/prioridade e totais testáveis sem TTY.
 - Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos), fluxos de `timer stop` e weeklist alvo em `cmd`, e flags/erros do fzf em `ui`.
+- Cobertura adicionada em 2026-10-30: `internal/week` (semanas ISO, parser tolerante, weeklist e feedback) e comandos `week`/`feedback` (flags, dry-run, print-path, alvos legados).
 - Testes que ainda faltam:
   - `cmd`: escolha da data alvo e mapeamento de flags;
   - wizard de `new` sem TTY (depende da extração para `internal/wizard`).
@@ -114,7 +111,7 @@ Os scripts são pequenos e o parser novo cobre quase tudo:
 
 1. ✅ **Crítico e rápido**: correções 1–6 (timer + semana alvo + validação do vault) — concluído em 2026-10-29.
 2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29.
-3. **Médio**: portar `week`/`feedback` para Go.
+3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
 4. **Médio**: voltar etapa, confirmação no Esc, etapa Extra, alerta de tempo total.
 5. **Contínuo**: README/Makefile/CI, testes restantes de `cmd` e extração do wizard.
 
