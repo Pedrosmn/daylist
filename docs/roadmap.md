@@ -4,7 +4,7 @@
 > Atualizado em 2026-10-29: correções 1–6 aplicadas e cobertas por testes.
 > Atualizado em 2026-10-30: item 3 (week/feedback) portado para Go; o QuickAdd não é mais usado para gerar notas.
 > Atualizado em 2026-10-30: item 4 (wizard) concluído com navegação Vim, voltar etapa, confirmação e tempo total.
-> Atualizado em 2026-10-30: README e Makefile adicionados; CI validado no GitHub Actions; novas mudanças passam por branch e PR.
+> Atualizado em 2026-10-30: README e Makefile adicionados; CI validado no GitHub Actions; branch protection ativa na `main`.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 
 ## Estado atual
@@ -35,8 +35,8 @@ internal/vault/       caminhos e URL do Obsidian
 ## 🌿 Fluxo de trabalho
 
 A partir de 2026-10-30, toda implementação nova começa em uma branch criada
-antes do primeiro commit. Commits diretos na `main` ficam reservados para
-emergências explícitas.
+antes do primeiro commit. Commits diretos na `main` são bloqueados pela
+proteção da branch.
 
 - `feat/...` para funcionalidades.
 - `fix/...` para correções.
@@ -47,9 +47,9 @@ emergências explícitas.
 O trabalho é commitado na branch e integrado por pull request. O merge deve
 ocorrer somente com o check `Testes e build` verde.
 
-**Status da proteção:** pendente. O repositório é privado no plano Free, e o
-GitHub exige GitHub Pro (ou repositório público) para branch protection e
-rulesets. Enquanto isso, a regra de branch e PR é seguida manualmente.
+**Status da proteção:** ativa desde 2026-10-30. A `main` exige pull request e o
+check `Testes e build` verde, precisa estar atualizada antes do merge e bloqueia
+force push e deleção. As regras valem também para administradores.
 
 ---
 
