@@ -6,6 +6,7 @@
 > Atualizado em 2026-10-30: item 4 (wizard) concluído com navegação Vim, voltar etapa, confirmação e tempo total.
 > Atualizado em 2026-10-30: README e Makefile adicionados; CI validado no GitHub Actions; branch protection ativa na `main`.
 > Atualizado em 2026-11-02: item 5.3 concluído; data alvo e flags de `new` cobertas por testes.
+> Atualizado em 2026-11-02: `daylist version` e `--version` adicionados com `ldflags`.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 
 ## Estado atual
@@ -110,10 +111,11 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos), fluxos de `timer stop` e weeklist alvo em `cmd`, e flags/erros do fzf em `ui`.
 - Cobertura adicionada em 2026-10-30: `internal/week` (semanas ISO, parser tolerante, weeklist e feedback), comandos `week`/`feedback` (flags, dry-run, print-path, alvos legados), navegação/voltar/cancelar em `ui` e fluxo do wizard em `internal/wizard`.
 - Cobertura adicionada em 2026-11-02: `cmd/new` (data alvo, padrão Hoje/Amanhã, cancelamento, erro do picker e flags).
-- ✅ `Makefile`: `build`, `install`, `test`, `test-race`, `vet`, `fmt`, `fmt-check`, `lint`, `cover`, `ci` e `clean`; usa `go test -race -cover ./...`.
+- Cobertura adicionada em 2026-11-02: `internal/version` (formato) e `cmd` (comando `version`, `--version` e ausência de vault).
+- ✅ `Makefile`: `build`, `install`, `test`, `test-race`, `vet`, `fmt`, `fmt-check`, `lint`, `cover`, `ci` e `clean`; usa `go test -race -cover ./...` e embute versão/commit/data no build.
 - ✅ `README.md`: instalação, configuração do vault, comandos, teclas do wizard, formato dos arquivos, desenvolvimento e limitações.
 - ✅ CI no GitHub Actions: workflow `.github/workflows/ci.yml` roda `make ci` em push/PR; primeiro run verde em 2026-10-30.
-- `daylist version` + `--version` (ldflags) — útil com binário em `~/go/bin`.
+- ✅ `daylist version` + `--version` (ldflags) — útil com binário em `~/go/bin`.
 - **Autodetectar o vault**: o Obsidian Flatpak registra os vaults em
   `~/.var/app/md.obsidian.Obsidian/config/obsidian/obsidian.json`
   (neste ambiente aponta para `/home/pedro/documents/Obsidian/Vault 33`). Ler esse arquivo (mais os caminhos de Linux/Snap/macOS) e usar `--vault` como override acaba com a dependência de `DAYLIST_VAULT_PATH`/`DAYLIST_VAULT_NAME`.
@@ -136,7 +138,7 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
 4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A etapa Extra fica adiada.
-5. **Contínuo**: ✅ README/Makefile, CI e testes de `cmd`.
+5. **Contínuo**: ✅ README/Makefile, CI, testes de `cmd` e versionamento do binário.
 
 ---
 

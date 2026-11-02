@@ -146,6 +146,18 @@ daylist timer status --prompt
 # ⏱ 25m
 ```
 
+### `daylist version`
+
+Mostra a versão, o commit e a data de build embutidos pelo `Makefile`.
+
+```sh
+daylist version
+daylist --version
+```
+
+`make build` e `make install` preenchem esses dados via `-ldflags`. Um
+`go install .` direto usa os valores padrão (`dev`).
+
 ### `daylist completion`
 
 Gera scripts de completion do Cobra para o shell atual.
@@ -202,8 +214,8 @@ Alvos disponíveis no `Makefile`:
 
 ```sh
 make help       # lista os alvos
-make build      # gera ./daylist
-make install    # instala com go install .
+make build      # gera ./daylist com versão embutida
+make install    # instala com go install . e versão embutida
 make test       # go test ./...
 make test-race  # go test -race -cover ./...
 make vet        # go vet ./...
