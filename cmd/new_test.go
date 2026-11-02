@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,4 +125,287 @@ func TestWeeklistForTargetYearBoundary(t *testing.T) {
 	if path != want || week != "2026-W01" || fallback {
 		t.Errorf("got path=%q week=%q fallback=%v, want %q 2026-W01 false", path, week, fallback, want)
 	}
+}
+
+func resetNewFlags() {
+	for _, name := range []string{"today", "tomorrow", "date", "dry-run"} {
+		f := newCmd.Flags().Lookup(name)
+		if f == nil {
+			continue
+		}
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	}
+	newOpts = newOptions{}
+}
+
+func TestResolveTargetDate(t *testing.T) {
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.Local)
+	tomorrow := now.AddDate(0, 0, 1)
+	pick := func(choice string) func(string, []string) (string, error) {
+		return func(string, []string) (string, error) {
+			return choice, nil
+		}
+	}
+	pickErr := errors.New("picker falhou")
+
+	cases := []struct {
+		name        string
+		opts        newOptions
+		todayExists bool
+		pick        func(string, []string) (string, error)
+		want        time.Time
+		wantErr     string
+	}{
+		{
+			name: "today",
+			opts: newOptions{Today: true},
+			want: now,
+		},
+		{
+			name: "tomorrow",
+			opts: newOptions{Tomorrow: true},
+			want: tomorrow,
+		},
+		{
+			name: "date",
+			opts: newOptions{Date: "2026-11-02"},
+			want: time.Date(2026, 11, 2, 0, 0, 0, 0, time.Local),
+		},
+		{
+			name:    "invalid date",
+			opts:    newOptions{Date: "2026-11-2"},
+			wantErr: "data inválida",
+		},
+		{
+			name:        "default with today existing",
+			todayExists: true,
+			want:        tomorrow,
+		},
+		{
+			name: "pick today",
+			pick: pick("Hoje (2026-10-30)"),
+			want: now,
+		},
+		{
+			name: "pick tomorrow",
+			pick: pick("Amanhã (2026-10-31)"),
+			want: tomorrow,
+		},
+		{
+			name: "cancel",
+			pick: pick(""),
+			want: time.Time{},
+		},
+		{
+			name: "picker error",
+			pick: func(string, []string) (string, error) {
+				return "", pickErr
+			},
+			wantErr: "picker falhou",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pickFn := tc.pick
+			if pickFn == nil {
+				pickFn = func(string, []string) (string, error) {
+					t.Fatal("picker não deveria ser chamado")
+					return "", nil
+				}
+			}
+
+			got, err := resolveTargetDate(now, tc.opts, tc.todayExists, pickFn)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("erro = %v, want contendo %q", err, tc.wantErr)
+				}
+				if !got.IsZero() {
+					t.Errorf("data = %v, want zero em caso de erro", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveTargetDate: %v", err)
+			}
+			if tc.want.IsZero() {
+				if !got.IsZero() {
+					t.Errorf("data = %v, want zero", got)
+				}
+				return
+			}
+			if !got.Equal(tc.want) {
+				t.Errorf("data = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveTargetDatePrompt(t *testing.T) {
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.Local)
+	var gotPrompt string
+	var gotOptions []string
+
+	target, err := resolveTargetDate(now, newOptions{}, false, func(prompt string, options []string) (string, error) {
+		gotPrompt = prompt
+		gotOptions = append([]string(nil), options...)
+		return options[0], nil
+	})
+	if err != nil {
+		t.Fatalf("resolveTargetDate: %v", err)
+	}
+
+	const wantPrompt = "A daylist de hoje não existe. Criar qual? "
+	if gotPrompt != wantPrompt {
+		t.Errorf("prompt = %q, want %q", gotPrompt, wantPrompt)
+	}
+	wantOptions := []string{"Hoje (2026-10-30)", "Amanhã (2026-10-31)"}
+	if strings.Join(gotOptions, "|") != strings.Join(wantOptions, "|") {
+		t.Errorf("opções = %q, want %q", gotOptions, wantOptions)
+	}
+	if !target.Equal(now) {
+		t.Errorf("data = %v, want %v", target, now)
+	}
+}
+
+func TestNewFlagsRegistered(t *testing.T) {
+	for _, name := range []string{"today", "tomorrow", "date", "dry-run"} {
+		if newCmd.Flags().Lookup(name) == nil {
+			t.Errorf("flag --%s não registrada em new", name)
+		}
+	}
+
+	foundAlias := false
+	for _, alias := range newCmd.Aliases {
+		if alias == "n" {
+			foundAlias = true
+			break
+		}
+	}
+	if !foundAlias {
+		t.Error("alias n não encontrado em new")
+	}
+}
+
+func TestNewFlagsBindOptions(t *testing.T) {
+	resetNewFlags()
+	t.Cleanup(resetNewFlags)
+
+	cases := []struct {
+		name  string
+		value string
+		check func() bool
+	}{
+		{"today", "true", func() bool { return newOpts.Today }},
+		{"tomorrow", "true", func() bool { return newOpts.Tomorrow }},
+		{"date", "2026-11-02", func() bool { return newOpts.Date == "2026-11-02" }},
+		{"dry-run", "true", func() bool { return newOpts.DryRun }},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetNewFlags()
+			if err := newCmd.Flags().Set(tc.name, tc.value); err != nil {
+				t.Fatalf("Set(%s): %v", tc.name, err)
+			}
+			if !tc.check() {
+				t.Errorf("flag --%s não atualizou as opções", tc.name)
+			}
+		})
+	}
+}
+
+func TestNewFlagsMutuallyExclusive(t *testing.T) {
+	t.Cleanup(resetNewFlags)
+
+	cases := [][]string{
+		{"today", "tomorrow"},
+		{"today", "date"},
+		{"tomorrow", "date"},
+	}
+	for _, flags := range cases {
+		t.Run(strings.Join(flags, "+"), func(t *testing.T) {
+			resetNewFlags()
+			for _, name := range flags {
+				value := "true"
+				if name == "date" {
+					value = "2026-11-02"
+				}
+				if err := newCmd.Flags().Set(name, value); err != nil {
+					t.Fatalf("Set(%s): %v", name, err)
+				}
+			}
+			if err := newCmd.ValidateFlagGroups(); err == nil {
+				t.Error("flags mutuamente exclusivas não geraram erro")
+			}
+		})
+	}
+}
+
+func TestRunNewExistingDaylist(t *testing.T) {
+	tv := newTestVault(t)
+	oldV := v
+	v = tv
+	t.Cleanup(func() { v = oldV })
+
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.Local)
+	path := tv.DaylistFile(now)
+	writeTestNote(t, path, "conteúdo existente\n")
+
+	out, err := captureStdout(t, func() error {
+		return runNew(tv, newOptions{Today: true}, now, nil)
+	})
+	if err != nil {
+		t.Fatalf("runNew: %v", err)
+	}
+	if !strings.Contains(out, "já existe") {
+		t.Errorf("saída não avisa que a daylist já existe: %q", out)
+	}
+	if got := readTestNote(t, path); got != "conteúdo existente\n" {
+		t.Errorf("daylist existente foi alterada: %q", got)
+	}
+}
+
+func TestRunNewDefaultUsesTomorrow(t *testing.T) {
+	tv := newTestVault(t)
+	oldV := v
+	v = tv
+	t.Cleanup(func() { v = oldV })
+
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.Local)
+	tomorrow := now.AddDate(0, 0, 1)
+	writeTestNote(t, tv.DaylistFile(now), "hoje\n")
+	writeTestNote(t, tv.DaylistFile(tomorrow), "amanhã\n")
+
+	out, err := captureStdout(t, func() error {
+		return runNew(tv, newOptions{}, now, nil)
+	})
+	if err != nil {
+		t.Fatalf("runNew: %v", err)
+	}
+	if !strings.Contains(out, "2026-10-31") {
+		t.Errorf("saída não se refere a amanhã: %q", out)
+	}
+}
+
+func TestRunNewCanceled(t *testing.T) {
+	tv := newTestVault(t)
+	oldV := v
+	v = tv
+	t.Cleanup(func() { v = oldV })
+
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.Local)
+	out, err := captureStdout(t, func() error {
+		return runNew(tv, newOptions{}, now, func(string, []string) (string, error) {
+			return "", nil
+		})
+	})
+	if err != nil {
+		t.Fatalf("runNew: %v", err)
+	}
+	if !strings.Contains(out, "Cancelado.") {
+		t.Errorf("saída não confirma cancelamento: %q", out)
+	}
+	assertNotExists(t, tv.DaylistFile(now))
 }
