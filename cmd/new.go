@@ -15,12 +15,14 @@ import (
 	"daylist/internal/wizard"
 )
 
-var (
-	newToday    bool
-	newTomorrow bool
-	newDate     string
-	newDryRun   bool
-)
+type newOptions struct {
+	Today    bool
+	Tomorrow bool
+	Date     string
+	DryRun   bool
+}
+
+var newOpts newOptions
 
 var newCmd = &cobra.Command{
 	Use:     "new",
@@ -38,48 +40,59 @@ Por padrão cria a daylist de amanhã. Se a daylist de hoje ainda não existir,
 pergunta se você quer criar a de hoje ou a de amanhã. As flags pulam a pergunta.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		target, err := resolveTargetDate()
-		if err != nil {
-			return err
-		}
-		if target.IsZero() {
-			fmt.Println("Cancelado.")
-			return nil
-		}
-		return createDaylist(target, newDryRun)
+		return runNew(v, newOpts, time.Now(), ui.Pick)
 	},
+}
+
+// runNew resolve a data alvo e cria a daylist correspondente.
+func runNew(v *vault.Vault, opts newOptions, now time.Time, pick func(string, []string) (string, error)) error {
+	todayExists := fileExists(v.DaylistFile(now))
+
+	target, err := resolveTargetDate(now, opts, todayExists, pick)
+	if err != nil {
+		return err
+	}
+	if target.IsZero() {
+		fmt.Println("Cancelado.")
+		return nil
+	}
+	return createDaylist(target, opts.DryRun)
 }
 
 // resolveTargetDate decide qual daylist criar. Devolve a data zero quando o
 // usuário cancela.
-func resolveTargetDate() (time.Time, error) {
-	now := time.Now()
-
-	if newToday {
+func resolveTargetDate(
+	now time.Time,
+	opts newOptions,
+	todayExists bool,
+	pick func(string, []string) (string, error),
+) (time.Time, error) {
+	if opts.Today {
 		return now, nil
 	}
-	if newTomorrow {
+	if opts.Tomorrow {
 		return now.AddDate(0, 0, 1), nil
 	}
-	if newDate != "" {
-		t, err := time.ParseInLocation("2006-01-02", newDate, time.Local)
+	if opts.Date != "" {
+		t, err := time.ParseInLocation("2006-01-02", opts.Date, time.Local)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("data inválida %q (use YYYY-MM-DD)", newDate)
+			return time.Time{}, fmt.Errorf("data inválida %q (use YYYY-MM-DD)", opts.Date)
 		}
 		return t, nil
 	}
 
 	// Comportamento padrão: amanhã. Mas se a daylist de hoje não existe,
 	// pergunta se o usuário quer a de hoje ou a de amanhã.
-	if fileExists(v.DaylistFile(now)) {
-		return now.AddDate(0, 0, 1), nil
+	tomorrow := now.AddDate(0, 0, 1)
+	if todayExists {
+		return tomorrow, nil
 	}
 
 	options := []string{
 		fmt.Sprintf("Hoje (%s)", now.Format("2006-01-02")),
-		fmt.Sprintf("Amanhã (%s)", now.AddDate(0, 0, 1).Format("2006-01-02")),
+		fmt.Sprintf("Amanhã (%s)", tomorrow.Format("2006-01-02")),
 	}
-	choice, err := ui.Pick("A daylist de hoje não existe. Criar qual? ", options)
+	choice, err := pick("A daylist de hoje não existe. Criar qual? ", options)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -89,7 +102,7 @@ func resolveTargetDate() (time.Time, error) {
 	if strings.HasPrefix(choice, "Hoje") {
 		return now, nil
 	}
-	return now.AddDate(0, 0, 1), nil
+	return tomorrow, nil
 }
 
 // weeklistForTarget devolve a weeklist da semana da data alvo; se não
@@ -201,10 +214,10 @@ func fileExists(path string) bool {
 }
 
 func init() {
-	newCmd.Flags().BoolVar(&newToday, "today", false, "cria a daylist de hoje")
-	newCmd.Flags().BoolVar(&newTomorrow, "tomorrow", false, "cria a daylist de amanhã")
-	newCmd.Flags().StringVar(&newDate, "date", "", "cria a daylist da data informada (YYYY-MM-DD)")
-	newCmd.Flags().BoolVar(&newDryRun, "dry-run", false, "mostra o conteúdo sem gravar")
+	newCmd.Flags().BoolVar(&newOpts.Today, "today", false, "cria a daylist de hoje")
+	newCmd.Flags().BoolVar(&newOpts.Tomorrow, "tomorrow", false, "cria a daylist de amanhã")
+	newCmd.Flags().StringVar(&newOpts.Date, "date", "", "cria a daylist da data informada (YYYY-MM-DD)")
+	newCmd.Flags().BoolVar(&newOpts.DryRun, "dry-run", false, "mostra o conteúdo sem gravar")
 	newCmd.MarkFlagsMutuallyExclusive("today", "tomorrow", "date")
 
 	rootCmd.AddCommand(newCmd)

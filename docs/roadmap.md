@@ -5,6 +5,7 @@
 > Atualizado em 2026-10-30: item 3 (week/feedback) portado para Go; o QuickAdd não é mais usado para gerar notas.
 > Atualizado em 2026-10-30: item 4 (wizard) concluído com navegação Vim, voltar etapa, confirmação e tempo total.
 > Atualizado em 2026-10-30: README e Makefile adicionados; CI validado no GitHub Actions; branch protection ativa na `main`.
+> Atualizado em 2026-11-02: item 5.3 concluído; data alvo e flags de `new` cobertas por testes.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 
 ## Estado atual
@@ -108,8 +109,7 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - ✅ `cmd/new.go` foi reduzido; o wizard agora vive em `internal/wizard`, com `Prompter` injetado, e é testável sem TTY.
 - Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos), fluxos de `timer stop` e weeklist alvo em `cmd`, e flags/erros do fzf em `ui`.
 - Cobertura adicionada em 2026-10-30: `internal/week` (semanas ISO, parser tolerante, weeklist e feedback), comandos `week`/`feedback` (flags, dry-run, print-path, alvos legados), navegação/voltar/cancelar em `ui` e fluxo do wizard em `internal/wizard`.
-- Testes que ainda faltam:
-  - `cmd`: escolha da data alvo e mapeamento de flags.
+- Cobertura adicionada em 2026-11-02: `cmd/new` (data alvo, padrão Hoje/Amanhã, cancelamento, erro do picker e flags).
 - ✅ `Makefile`: `build`, `install`, `test`, `test-race`, `vet`, `fmt`, `fmt-check`, `lint`, `cover`, `ci` e `clean`; usa `go test -race -cover ./...`.
 - ✅ `README.md`: instalação, configuração do vault, comandos, teclas do wizard, formato dos arquivos, desenvolvimento e limitações.
 - ✅ CI no GitHub Actions: workflow `.github/workflows/ci.yml` roda `make ci` em push/PR; primeiro run verde em 2026-10-30.
@@ -136,7 +136,7 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
 4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A etapa Extra fica adiada.
-5. **Contínuo**: ✅ README/Makefile e CI; ⏳ testes restantes de `cmd`.
+5. **Contínuo**: ✅ README/Makefile, CI e testes de `cmd`.
 
 ---
 
