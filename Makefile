@@ -2,6 +2,12 @@ BINARY ?= daylist
 GO ?= go
 COVERAGE ?= coverage.out
 COVERAGE_HTML ?= coverage.html
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS ?= -X daylist/internal/version.Version=$(VERSION) \
+	-X daylist/internal/version.Commit=$(COMMIT) \
+	-X daylist/internal/version.Date=$(BUILD_DATE)
 
 .DEFAULT_GOAL := help
 .PHONY: help build install test test-race vet fmt fmt-check lint cover ci clean
@@ -22,10 +28,10 @@ help:
 	@echo "  clean       Remove binário e artefatos de cobertura"
 
 build:
-	$(GO) build -o $(BINARY) .
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY) .
 
 install:
-	$(GO) install .
+	$(GO) install -ldflags "$(LDFLAGS)" .
 
 test:
 	$(GO) test ./...

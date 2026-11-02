@@ -21,6 +21,10 @@ var rootCmd = &cobra.Command{
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// version e --version não podem depender de um vault configurado.
+		if cmd.Name() == "version" {
+			return nil
+		}
 		var err error
 		v, err = vault.Load()
 		return err
