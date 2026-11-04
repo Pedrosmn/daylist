@@ -139,6 +139,37 @@ func TestTogglePlainStartsWithSelection(t *testing.T) {
 	}
 }
 
+func TestTogglePlainLockedStaysSelected(t *testing.T) {
+	setStdin(t, "2\n2\nl\n")
+	res, err := togglePlainOptions(ToggleOptions{
+		Prompt:   "escolha: ",
+		Items:    []string{"a", "b", "c"},
+		Selected: []int{1},
+		Locked:   []int{1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Selected) != 1 || res.Selected[0] != 1 {
+		t.Errorf("selected = %v, want [1]", res.Selected)
+	}
+}
+
+func TestTogglePlainLockedIsAutoSelected(t *testing.T) {
+	setStdin(t, "l\n")
+	res, err := togglePlainOptions(ToggleOptions{
+		Prompt: "escolha: ",
+		Items:  []string{"a", "b", "c"},
+		Locked: []int{2},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Selected) != 1 || res.Selected[0] != 2 {
+		t.Errorf("selected = %v, want [2]", res.Selected)
+	}
+}
+
 func TestInputTrims(t *testing.T) {
 	setStdin(t, "  45  \n")
 	got, err := Input("min: ")

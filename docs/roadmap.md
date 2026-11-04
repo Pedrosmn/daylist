@@ -10,6 +10,7 @@
 > Atualizado em 2026-11-04: timer sinaliza mínimo/máximo do tempo planejado; itens adiados foram para `docs/backlog.md`.
 > Atualizado em 2026-11-04: próximo ciclo definido (TUI, `#always`, motivações e Extra); tarefas detalhadas em `docs/backlog.md`.
 > Atualizado em 2026-11-04: `#always` restrito a hábitos e incluído automaticamente nas daylists da semana; adicionadas prévia, undo, fechamento do dia e motivação no foco.
+> Atualizado em 2026-11-04: `W1–W4` concluídos (marcador `#always` no parser, na próxima weeklist e no wizard).
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).

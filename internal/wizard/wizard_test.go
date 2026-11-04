@@ -109,6 +109,40 @@ func TestRunBackPreservesSelection(t *testing.T) {
 	}
 }
 
+func TestRunAlwaysHabitsAreLocked(t *testing.T) {
+	p := &fakePrompter{
+		toggles: []ui.ToggleResult{
+			{Selected: []int{}, Action: ui.ToggleFinish},
+		},
+	}
+
+	always := item("A", "10 min", "I")
+	always.Always = true
+	other := item("B", "20 min", "I")
+
+	result, err := Run(Options{
+		Stages: []daylist.Stage{stage("Rotina", always, other)},
+		UI:     p,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Resolved) != 1 || result.Resolved[0].Desc != "A" {
+		t.Fatalf("resolved = %+v, want apenas A", result.Resolved)
+	}
+
+	opts := p.toggleOpts[0]
+	if len(opts.Selected) != 1 || opts.Selected[0] != 0 {
+		t.Errorf("seleção inicial = %v, want [0]", opts.Selected)
+	}
+	if len(opts.Locked) != 1 || opts.Locked[0] != 0 {
+		t.Errorf("locked = %v, want [0]", opts.Locked)
+	}
+	if opts.Items[0] != "A (sempre)" {
+		t.Errorf("label = %q, want %q", opts.Items[0], "A (sempre)")
+	}
+}
+
 func TestRunBackDoesNotReaskResolvedItems(t *testing.T) {
 	p := &fakePrompter{
 		toggles: []ui.ToggleResult{
