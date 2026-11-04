@@ -9,9 +9,13 @@ Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
 - `daylist` sem argumentos abre o TUI quando houver terminal interativo.
 - `daylist open` abre a daylist de hoje no Obsidian, preservando o comportamento
   atual de abertura.
-- Itens “sempre” podem ser tasks ou hábitos da weeklist. Eles ficam
-  pré-selecionados em toda daylist e são copiados para a weeklist seguinte.
-- O marcador de “sempre” é visível: `#always` no fim da linha.
+- O marcador `#always` é exclusivo de hábitos da weeklist: tasks são feitas uma
+  vez e não usam esse marcador.
+- Hábitos com `#always` são copiados para a próxima weeklist com o marcador
+  preservado.
+- Toda daylist daquela semana já inclui automaticamente os hábitos `#always`,
+  com checkbox `[ ]` desmarcado. Eles não dependem de seleção manual e não podem
+  ser removidos no wizard.
 - Motivação existe somente na daylist, por item, em blockquote.
 - Extra pode ser task ou hábito:
   - task Extra vai para `# Extra`;
@@ -21,14 +25,15 @@ Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
 
 ### 1. Metadados da weeklist
 
-- [ ] W1. Reconhecer `#always` no fim de uma task ou hábito, sem deixar o
-  marcador na descrição interpretada.
-- [ ] W2. Fazer o wizard iniciar com os itens `#always` pré-selecionados,
-  permitindo desmarcar.
-- [ ] W3. Fazer `BuildWeeklist` copiar itens `#always` de `# Tasks` e de
-  `# Hábitos` para a semana seguinte, preservando tempo, prioridade e o
-  marcador; o checkbox volta para pendente.
-- [ ] W4. Cobrir W1–W3 com testes, incluindo CRLF e itens sem `#always`.
+- [ ] W1. Reconhecer `#always` apenas em hábitos, sem deixar o marcador na
+  descrição interpretada; tasks tratam o texto normalmente.
+- [ ] W2. Fazer `BuildWeeklist` preservar `#always` nos hábitos copiados para a
+  semana seguinte, mantendo tempo, prioridade e o checkbox pendente. Tasks
+  continuam sem ser copiadas.
+- [ ] W3. Fazer o wizard incluir automaticamente todos os hábitos `#always` em
+  toda daylist da semana, sem marcação manual e sem opção de remover.
+- [ ] W4. Cobrir W1–W3 com testes, incluindo CRLF, hábitos sem `#always` e
+  garantia de que tasks não são copiadas.
 
 ### 2. Modelo da daylist
 
@@ -59,14 +64,23 @@ Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
   - task: formulário com descrição, tempo, prioridade e motivação;
   - hábito: escolher da weeklist e inserir na categoria original.
 - [ ] T9. Editar motivação de item da daylist.
-- [ ] T10. Ver a weeklist atual e alternar o marcador `#always`.
+- [ ] T10. Ver a weeklist atual e alternar o marcador `#always` apenas em
+  hábitos.
 - [ ] T11. Tela de ajuda, mensagens de erro e confirmações.
 - [ ] T12. Cobrir o modelo TUI com backend falso.
+- [ ] T13. Mostrar uma prévia antes de criar a daylist:
+  - hábitos `#always` que já entrarão automaticamente;
+  - total de tempo planejado;
+  - alerta quando o dia já nascer acima de um limite configurável.
+- [ ] T14. Adicionar undo no TUI para desfazer a última ação de edição.
+- [ ] T15. Adicionar ação “Fechar o dia” com resumo de planejado vs. real,
+  concluídos, pendentes e opção de trazer pendentes para amanhã.
+- [ ] T16. Mostrar a motivação do item ao destacá-lo e ao iniciar o timer.
 
 ### 4. Documentação e validação
 
-- [ ] DOC1. Atualizar o README com TUI, `open`, `#always`, motivação, Extra e
-  feedback.
+- [ ] DOC1. Atualizar o README com TUI, `open`, `#always`, motivação, Extra,
+  prévia da daylist, undo e fechamento do dia.
 - [ ] DOC2. Atualizar o roadmap com o próximo ciclo.
 - [ ] DOC3. Rodar `make ci` e testar o TUI manualmente em terminal real.
 
