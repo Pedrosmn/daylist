@@ -8,6 +8,7 @@
 > Atualizado em 2026-11-02: item 5.3 concluído; data alvo e flags de `new` cobertas por testes.
 > Atualizado em 2026-11-02: `daylist version` e `--version` adicionados com `ldflags`.
 > Atualizado em 2026-11-04: timer sinaliza mínimo/máximo do tempo planejado; itens adiados foram para `docs/backlog.md`.
+> Atualizado em 2026-11-04: próximo ciclo definido (TUI, `#always`, motivações e Extra); tarefas detalhadas em `docs/backlog.md`.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
@@ -35,8 +36,26 @@ internal/week/        semanas ISO, parser de hábitos, weeklist e feedback
 internal/timer/       estado do timer + marcação ⏱ na daylist
 internal/wizard/      fluxo por etapas, voltar, resolução de tempo/prioridade e total
 internal/ui/          Pick (fzf/menu) + Toggle (wizard) + Input + Confirm
+internal/tui/         (planejado) modelo, telas e ações do TUI
 internal/vault/       caminhos e URL do Obsidian
 ```
+
+## 🖥️ Próximo ciclo — TUI e metadados
+
+As tarefas detalhadas estão em [docs/backlog.md](backlog.md).
+
+- `daylist` sem argumentos abre o TUI; `daylist open` mantém a abertura no
+  Obsidian.
+- Ações do TUI: criar daylist, criar weeklist atual se faltar, ver e recarregar
+  a daylist, marcar item como concluído, controlar o timer, adicionar Extra,
+  editar motivação e abrir a nota no Obsidian.
+- A criação da daylist reutiliza o wizard atual, suspendendo o TUI.
+- `#always` no fim de uma task ou hábito marca o item como “sempre”: ele fica
+  pré-selecionado em toda daylist e é copiado para a weeklist seguinte.
+- Motivação fica somente na daylist, como blockquote abaixo do item.
+- Hábito Extra é escolhido entre os hábitos da weeklist e inserido na categoria
+  original de `# Hábitos`, para entrar no feedback normalmente.
+- Task Extra continua indo para `# Extra`.
 
 ## 🌿 Fluxo de trabalho
 
@@ -73,7 +92,9 @@ As correções 1–6 do roadmap foram implementadas e cobertas por testes:
 ## 🧭 Escopo atual
 
 - Linux-only por decisão; suporte a macOS/WSL fica fora do escopo.
-- Autodetecção do vault e etapa Extra estão adiadas em `docs/backlog.md`.
+- Autodetecção do vault continua adiada em `docs/backlog.md`.
+- O próximo ciclo é o TUI com `#always`, motivações e Extra; o wizard não terá
+  uma etapa Extra separada.
 - O timer sinaliza mínimo e máximo do tempo planejado, sem parar automaticamente.
 
 ---
@@ -98,7 +119,10 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - **Esc/q com itens marcados**: confirma “descartar tudo?” antes de perder as escolhas.
 - **Tempo total planejado**: exibido ao final como valor único ou faixa (`1h45–1h55`); sem limite e sem alerta.
 - **Duração personalizada**: continua aceitando número via `Input`.
-- **Etapa “Extra”**: está no backlog; a seção `# Extra` continua vazia por enquanto.
+- **Itens “sempre”**: o wizard deve iniciar com itens marcados com `#always` já
+  selecionados, mas ainda desmarcáveis.
+- **Etapa “Extra”**: não será uma etapa do wizard; a inclusão de Extra será uma
+  ação do TUI.
 
 ---
 
@@ -138,8 +162,9 @@ o roadmap focado no escopo atual.
 1. ✅ **Crítico e rápido**: correções 1–6 (timer + semana alvo + validação do vault) — concluído em 2026-10-29.
 2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
-4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A etapa Extra está no backlog.
+4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A inclusão de Extra será feita pelo TUI, não pelo wizard.
 5. **Contínuo**: ✅ README/Makefile, CI, testes de `cmd` e versionamento do binário.
+6. **Próximo ciclo**: TUI, `#always`, motivações e Extra — tarefas em [docs/backlog.md](backlog.md).
 
 ---
 
