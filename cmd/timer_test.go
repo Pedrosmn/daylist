@@ -228,6 +228,160 @@ func TestPromptTextZero(t *testing.T) {
 	}
 }
 
+func TestPromptTextLimits(t *testing.T) {
+	cases := []struct {
+		name    string
+		elapsed time.Duration
+		min     int
+		max     int
+		paused  bool
+		want    string
+	}{
+		{"abaixo do mínimo", 3 * time.Minute, 5, 15, false, "⏱ 3/15m"},
+		{"no mínimo", 5 * time.Minute, 5, 15, false, "⏱ 5m✓"},
+		{"no máximo", 15 * time.Minute, 5, 15, false, "⏱ 15m⚠"},
+		{"acima do máximo", 16 * time.Minute, 5, 15, false, "⏱ 16m⚠"},
+		{"sem faixa", 3 * time.Minute, 30, 30, false, "⏱ 3/30m"},
+		{"pausado no mínimo", 5 * time.Minute, 5, 15, true, "⏱ 5m✓ ⏸"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			elapsed := int64(0)
+			if tc.paused {
+				elapsed = tc.elapsed.Milliseconds()
+			}
+			s := &timer.State{
+				Paused:     tc.paused,
+				Start:      time.Now().Add(-tc.elapsed).UnixMilli(),
+				Elapsed:    elapsed,
+				MinMinutes: tc.min,
+				MaxMinutes: tc.max,
+			}
+			if got := promptText(s); got != tc.want {
+				t.Errorf("promptText = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStatusTextLimits(t *testing.T) {
+	cases := []struct {
+		name    string
+		elapsed time.Duration
+		min     int
+		max     int
+		want    string
+	}{
+		{
+			name:    "mínimo atingido",
+			elapsed: 5 * time.Minute,
+			min:     5,
+			max:     15,
+			want:    "Timer pausado: tarefa — 5min acumulados (planejado 5–15min; mínimo atingido)",
+		},
+		{
+			name:    "máximo atingido",
+			elapsed: 15 * time.Minute,
+			min:     5,
+			max:     15,
+			want:    "Timer pausado: tarefa — 15min acumulados (planejado 5–15min; máximo atingido)",
+		},
+		{
+			name:    "tempo único",
+			elapsed: 30 * time.Minute,
+			min:     30,
+			max:     30,
+			want:    "Timer pausado: tarefa — 30min acumulados (planejado 30min; máximo atingido)",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &timer.State{
+				Desc:       "tarefa",
+				Paused:     true,
+				Elapsed:    tc.elapsed.Milliseconds(),
+				MinMinutes: tc.min,
+				MaxMinutes: tc.max,
+			}
+			if got := statusText(s); got != tc.want {
+				t.Errorf("statusText = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStatusTimerNotifiesOncePerLimit(t *testing.T) {
+	oldNotify := sendNotification
+	t.Cleanup(func() { sendNotification = oldNotify })
+
+	var calls []string
+	sendNotification = func(title, body string) error {
+		if title != "Daylist" {
+			t.Errorf("título = %q, want Daylist", title)
+		}
+		calls = append(calls, body)
+		return nil
+	}
+
+	v := newTestVault(t)
+	s := &timer.State{
+		Desc:       "estudar",
+		Paused:     true,
+		Elapsed:    (4 * time.Minute).Milliseconds(),
+		MinMinutes: 5,
+		MaxMinutes: 15,
+	}
+	if err := s.Save(v.StateFile()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	runStatus := func() {
+		t.Helper()
+		if _, err := captureStdout(t, func() error { return statusTimer(v, false) }); err != nil {
+			t.Fatalf("statusTimer: %v", err)
+		}
+	}
+
+	runStatus()
+	if len(calls) != 0 {
+		t.Fatalf("notificações antes do mínimo: %q", calls)
+	}
+
+	loaded, err := timer.Load(v.StateFile())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	loaded.Elapsed = (5 * time.Minute).Milliseconds()
+	if err := loaded.Save(v.StateFile()); err != nil {
+		t.Fatalf("Save no mínimo: %v", err)
+	}
+	runStatus()
+	if len(calls) != 1 || !strings.Contains(calls[0], "mínimo atingido") {
+		t.Fatalf("notificações no mínimo = %q", calls)
+	}
+	runStatus()
+	if len(calls) != 1 {
+		t.Fatalf("notificação de mínimo repetida: %q", calls)
+	}
+
+	loaded, err = timer.Load(v.StateFile())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	loaded.Elapsed = (15 * time.Minute).Milliseconds()
+	if err := loaded.Save(v.StateFile()); err != nil {
+		t.Fatalf("Save no máximo: %v", err)
+	}
+	runStatus()
+	if len(calls) != 2 || !strings.Contains(calls[1], "máximo atingido") {
+		t.Fatalf("notificações no máximo = %q", calls)
+	}
+	runStatus()
+	if len(calls) != 2 {
+		t.Fatalf("notificação de máximo repetida: %q", calls)
+	}
+}
+
 func TestStatusTimerPromptNoState(t *testing.T) {
 	v := newTestVault(t)
 

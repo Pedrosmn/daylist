@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"daylist/internal/daylist"
 )
 
 var (
@@ -33,6 +35,11 @@ type State struct {
 	Elapsed  int64  `json:"elapsed"`
 	Paused   bool   `json:"paused"`
 	PausedAt int64  `json:"paused_at"`
+
+	MinMinutes  int  `json:"min_minutes,omitempty"`
+	MaxMinutes  int  `json:"max_minutes,omitempty"`
+	MinNotified bool `json:"min_notified,omitempty"`
+	MaxNotified bool `json:"max_notified,omitempty"`
 }
 
 func nowMs() int64 { return time.Now().UnixMilli() }
@@ -40,13 +47,43 @@ func nowMs() int64 { return time.Now().UnixMilli() }
 // New cria um timer para a linha escolhida. rel é o caminho da daylist relativo ao vault.
 func New(line, rel string) *State {
 	now := nowMs()
-	return &State{
+	s := &State{
 		File:    rel,
 		Line:    line,
 		Desc:    descRe.ReplaceAllString(line, ""),
 		Start:   now,
 		Started: now,
 	}
+	if it, ok := daylist.ParseLine(line); ok {
+		if min, max, ok := daylist.ParseTimeRange(it.Time); ok {
+			s.MinMinutes, s.MaxMinutes = min, max
+		}
+	}
+	return s
+}
+
+// Limits devolve o tempo planejado mínimo e máximo em minutos. Estados
+// antigos, sem os campos persistidos, são interpretados a partir da linha.
+func (s *State) Limits() (min, max int, ok bool) {
+	if s.MinMinutes > 0 && s.MaxMinutes >= s.MinMinutes {
+		return s.MinMinutes, s.MaxMinutes, true
+	}
+	if it, ok := daylist.ParseLine(s.Line); ok {
+		if lo, hi, ok := daylist.ParseTimeRange(it.Time); ok {
+			s.MinMinutes, s.MaxMinutes = lo, hi
+			return lo, hi, true
+		}
+	}
+	return 0, 0, false
+}
+
+// Thresholds informa se o tempo total já alcançou o mínimo e o máximo.
+func (s *State) Thresholds(totalMs int64) (minReached, maxReached bool) {
+	min, max, ok := s.Limits()
+	if !ok {
+		return false, false
+	}
+	return totalMs >= int64(min)*60_000, totalMs >= int64(max)*60_000
 }
 
 func Load(path string) (*State, error) {

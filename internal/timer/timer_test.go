@@ -116,6 +116,69 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestNewParsesLimits(t *testing.T) {
+	cases := []struct {
+		line string
+		min  int
+		max  int
+		ok   bool
+	}{
+		{"- [ ] 5/15 min (I) - tarefa", 5, 15, true},
+		{"- [ ] 30min (I) - tarefa", 30, 30, true},
+		{"- [ ] xST () - tarefa", 0, 0, false},
+		{"- [ ] tarefa livre", 0, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.line, func(t *testing.T) {
+			s := New(tc.line, "2026-10-29.md")
+			min, max, ok := s.Limits()
+			if min != tc.min || max != tc.max || ok != tc.ok {
+				t.Errorf("Limits() = %d, %d, %v; want %d, %d, %v",
+					min, max, ok, tc.min, tc.max, tc.ok)
+			}
+		})
+	}
+}
+
+func TestLimitsFromLegacyLine(t *testing.T) {
+	s := &State{Line: "- [ ] 10/20 min (I) - tarefa antiga"}
+	min, max, ok := s.Limits()
+	if min != 10 || max != 20 || !ok {
+		t.Fatalf("Limits() = %d, %d, %v; want 10, 20, true", min, max, ok)
+	}
+	if s.MinMinutes != 10 || s.MaxMinutes != 20 {
+		t.Errorf("limites não foram preenchidos no estado: %+v", s)
+	}
+}
+
+func TestThresholds(t *testing.T) {
+	s := &State{MinMinutes: 5, MaxMinutes: 15}
+	cases := []struct {
+		name     string
+		total    time.Duration
+		min, max bool
+	}{
+		{"abaixo do mínimo", 5*time.Minute - time.Millisecond, false, false},
+		{"exatamente no mínimo", 5 * time.Minute, true, false},
+		{"entre mínimo e máximo", 10 * time.Minute, true, false},
+		{"exatamente no máximo", 15 * time.Minute, true, true},
+		{"acima do máximo", 16 * time.Minute, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			min, max := s.Thresholds(tc.total.Milliseconds())
+			if min != tc.min || max != tc.max {
+				t.Errorf("Thresholds(%v) = %v, %v; want %v, %v", tc.total, min, max, tc.min, tc.max)
+			}
+		})
+	}
+
+	noLimits := &State{}
+	if min, max := noLimits.Thresholds(10 * time.Minute.Milliseconds()); min || max {
+		t.Errorf("estado sem limites não deveria ter thresholds: %v, %v", min, max)
+	}
+}
+
 func TestRoundedMinutes(t *testing.T) {
 	tests := []struct {
 		name string
