@@ -25,14 +25,14 @@ Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
 
 ### 1. Metadados da weeklist
 
-- [ ] W1. Reconhecer `#always` apenas em hábitos, sem deixar o marcador na
+- [x] W1. Reconhecer `#always` apenas em hábitos, sem deixar o marcador na
   descrição interpretada; tasks tratam o texto normalmente.
-- [ ] W2. Fazer `BuildWeeklist` preservar `#always` nos hábitos copiados para a
+- [x] W2. Fazer `BuildWeeklist` preservar `#always` nos hábitos copiados para a
   semana seguinte, mantendo tempo, prioridade e o checkbox pendente. Tasks
   continuam sem ser copiadas.
-- [ ] W3. Fazer o wizard incluir automaticamente todos os hábitos `#always` em
+- [x] W3. Fazer o wizard incluir automaticamente todos os hábitos `#always` em
   toda daylist da semana, sem marcação manual e sem opção de remover.
-- [ ] W4. Cobrir W1–W3 com testes, incluindo CRLF, hábitos sem `#always` e
+- [x] W4. Cobrir W1–W3 com testes, incluindo CRLF, hábitos sem `#always` e
   garantia de que tasks não são copiadas.
 
 ### 2. Modelo da daylist

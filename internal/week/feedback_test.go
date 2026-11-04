@@ -132,6 +132,18 @@ livre 1/1 - (100%)
 	}
 }
 
+func TestBuildFeedbackStripsAlways(t *testing.T) {
+	weeklist := "# Hábitos\n## Saúde\n- [ ] 5 min (U) - correr #always\n"
+	day := "# Hábitos\n## Saúde\n- [x] 5 min (U) - correr #always\n"
+	got := BuildFeedback("2026-W45", weeklist, []Day{{Content: day}}, feedbackTime())
+	if !contains(got, "correr 1/1 - (100%)") {
+		t.Errorf("feedback não deveria incluir o marcador:\n%s", got)
+	}
+	if contains(got, "#always") {
+		t.Errorf("feedback não deveria conter #always:\n%s", got)
+	}
+}
+
 func TestBuildFeedbackCRLF(t *testing.T) {
 	weeklist := "# Hábitos\r\n## Saúde\r\n- [x] 5 min (U) - correr\r\n"
 	day := "# Hábitos\r\n## Saúde\r\n- [x] 5 min (U) - correr\r\n"

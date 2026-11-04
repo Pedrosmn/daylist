@@ -71,13 +71,18 @@ func Run(opts Options) (Result, error) {
 		labels := make([]string, len(stage.Items))
 		for j, it := range stage.Items {
 			labels[j] = it.Desc
+			if it.Always {
+				labels[j] += " (sempre)"
+			}
 		}
+		locked := lockedIndices(stage.Items)
 
 		res, err := opts.UI.Toggle(ui.ToggleOptions{
 			Prompt:      fmt.Sprintf("Etapa %d/%d · %s › ", i+1, len(opts.Stages), stage.Title),
 			FinishLabel: "✅ Concluir " + stage.Title,
 			Items:       labels,
-			Selected:    state.marked,
+			Selected:    withLocked(state.marked, locked, len(stage.Items)),
+			Locked:      locked,
 			AllowBack:   i > 0,
 			Header:      fmt.Sprintf("Etapa %d/%d · %s", i+1, len(opts.Stages), stage.Title),
 		})
@@ -85,9 +90,10 @@ func Run(opts Options) (Result, error) {
 			return Result{}, err
 		}
 
+		state.marked = withLocked(res.Selected, locked, len(stage.Items))
+
 		switch res.Action {
 		case ui.ToggleCancel:
-			state.marked = res.Selected
 			discard, err := confirmDiscard(opts.UI, states)
 			if err != nil {
 				return Result{}, err
@@ -98,13 +104,11 @@ func Run(opts Options) (Result, error) {
 			return Result{Canceled: true}, nil
 
 		case ui.ToggleBack:
-			state.marked = res.Selected
 			if i > 0 {
 				i--
 			}
 
 		case ui.ToggleFinish:
-			state.marked = res.Selected
 			resolved, canceled, err := resolveStage(opts.UI, out, stage.Items, state)
 			if err != nil {
 				return Result{}, err
@@ -268,6 +272,42 @@ func hasSelection(states []stageState) bool {
 		}
 	}
 	return false
+}
+
+// lockedIndices devolve os índices dos hábitos #always, que entram em toda
+// daylist e não podem ser removidos no wizard.
+func lockedIndices(items []daylist.Item) []int {
+	var out []int
+	for i, it := range items {
+		if it.Always {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// withLocked garante que os índices travados continuem selecionados, mesmo que
+// a UI devolva uma seleção sem eles.
+func withLocked(selected, locked []int, total int) []int {
+	marked := make([]bool, total)
+	for _, idx := range selected {
+		if idx >= 0 && idx < total {
+			marked[idx] = true
+		}
+	}
+	for _, idx := range locked {
+		if idx >= 0 && idx < total {
+			marked[idx] = true
+		}
+	}
+
+	out := make([]int, 0, len(selected)+len(locked))
+	for i, on := range marked {
+		if on {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 func resolvedFor(state *stageState) []daylist.Resolved {

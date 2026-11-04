@@ -5,8 +5,8 @@ import "strings"
 // BuildWeeklist monta a nova weeklist a partir do conteúdo da weeklist de
 // origem. Fonte vazia gera uma weeklist só com as seções base.
 //
-// Os hábitos são copiados preservando tempo, prioridade e descrição; apenas o
-// checkbox é resetado para pendente.
+// Os hábitos são copiados preservando tempo, prioridade, descrição e o
+// marcador #always; apenas o checkbox é resetado para pendente.
 func BuildWeeklist(source string) string {
 	var habits []string
 	inHabits := false

@@ -137,6 +137,36 @@ func TestParseTolerantFormats(t *testing.T) {
 	}
 }
 
+func TestParseAlwaysOnlyForHabits(t *testing.T) {
+	content := `# Tasks
+- [ ] 10 min (I) - task #always
+# Hábitos
+## Rotina
+- [ ] 5 min (U) - Fio dental #always
+- [ ] 10 min () - Ler #Always
+- [ ] 15 min () - Meditar #always agora
+`
+	items := Parse(content)
+	if len(items) != 4 {
+		t.Fatalf("esperava 4 itens, veio %d: %+v", len(items), items)
+	}
+
+	task := items[0]
+	if task.Always || task.Desc != "task #always" {
+		t.Errorf("task não deveria interpretar #always: %+v", task)
+	}
+
+	if !items[1].Always || items[1].Desc != "Fio dental" {
+		t.Errorf("hábito #always inesperado: %+v", items[1])
+	}
+	if !items[2].Always || items[2].Desc != "Ler" {
+		t.Errorf("hábito #Always inesperado: %+v", items[2])
+	}
+	if items[3].Always || items[3].Desc != "Meditar #always agora" {
+		t.Errorf("#always no meio não deveria ser marcador: %+v", items[3])
+	}
+}
+
 func TestParseTimeRange(t *testing.T) {
 	tests := []struct {
 		value string

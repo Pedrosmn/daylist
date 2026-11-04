@@ -3,13 +3,17 @@ package week
 import (
 	"regexp"
 	"strings"
+
+	"daylist/internal/marker"
 )
 
 // HabitLine é uma linha de hábito já interpretada. Body preserva o conteúdo
 // depois do checkbox (tempo, prioridade e descrição) para a weeklist; Desc
-// contém só a descrição, usada pelo feedback.
+// contém só a descrição, usada pelo feedback e pelo wizard. Always indica que
+// a descrição termina com o marcador #always.
 type HabitLine struct {
 	Checked bool
+	Always  bool
 	Body    string
 	Desc    string
 }
@@ -45,8 +49,11 @@ func ParseHabitLine(line string) (HabitLine, bool) {
 		desc = strings.TrimSpace(fm[2])
 	}
 
+	desc, always := marker.StripAlways(desc)
+
 	return HabitLine{
 		Checked: m[1] == "x" || m[1] == "X",
+		Always:  always,
 		Body:    body,
 		Desc:    desc,
 	}, true

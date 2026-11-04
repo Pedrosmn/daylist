@@ -97,10 +97,15 @@ pergunta se você quer criar a de hoje ou a de amanhã. As flags pulam essa
 pergunta. Quando a weeklist da semana alvo não existe, usa a da semana anterior
 e avisa.
 
+Hábitos da weeklist marcados com `#always` entram automaticamente em toda
+daylist daquela semana, com o checkbox pendente. Eles aparecem como `(sempre)`
+e não podem ser desmarcados no wizard. O marcador vale somente para hábitos.
+
 ### `daylist week` (`w`)
 
-Cria a weeklist da próxima semana, copiando os hábitos da semana anterior. Tempo
-e prioridade são preservados; apenas o checkbox volta para pendente.
+Cria a weeklist da próxima semana, copiando os hábitos da semana anterior. Tempo,
+prioridade e o marcador `#always` são preservados; apenas o checkbox volta para
+pendente.
 
 ```sh
 daylist week
@@ -189,6 +194,9 @@ Ao voltar uma etapa, seleções, tempos e prioridades já definidos são
 preservados. A duração personalizada é digitada fora do fzf, quando você escolhe
 `Personalizado`.
 
+Hábitos com `#always` aparecem com o sufixo `(sempre)`, já entram marcados em
+toda daylist da semana e não podem ser desmarcados.
+
 Ao final, o tempo total planejado é exibido. Tempos compostos aparecem como
 faixa, por exemplo:
 
@@ -207,11 +215,15 @@ A weeklist aceita o formato completo, só tempo, só prioridade ou texto livre:
 - [ ] 30 min - Revisar
 - [ ] (I) - Responder mensagens
 - [ ] Texto livre
+- [ ] 5 min () - Fio dental #always
 ```
 
 - `5/15 min` representa uma faixa de 5 a 15 minutos.
 - Prioridades: `I` (importante), `U` (urgente) ou `IU` (ambos).
 - `ST` e `xST` pedem que a duração seja escolhida durante o wizard.
+- `#always` no fim de um hábito faz o item entrar automaticamente em toda
+  daylist da semana e ser copiado para a próxima weeklist. Use apenas em
+  hábitos; tasks não recebem esse marcador.
 - Itens marcados como `[x]` não entram na seleção.
 - O parser é tolerante a espaços e a variações de caixa em tempos e
   prioridades.

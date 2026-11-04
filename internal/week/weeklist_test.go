@@ -8,7 +8,7 @@ const weeklistSource = `# Tasks
 ---
 # Hábitos
 ## Saúde
-- [x] 10 min (I) - correr
+- [x] 10 min (I) - correr #always
 - [ ] xST () - dormir
 
 ## Estudos
@@ -26,7 +26,7 @@ func TestBuildWeeklistCopiesHabits(t *testing.T) {
 ---
 # Hábitos
 ## Saúde
-- [ ] 10 min (I) - correr
+- [ ] 10 min (I) - correr #always
 - [ ] xST () - dormir
 ## Estudos
 - [ ] 20 min (U) - ler
@@ -36,6 +36,26 @@ func TestBuildWeeklistCopiesHabits(t *testing.T) {
 `
 	if got := BuildWeeklist(weeklistSource); got != want {
 		t.Errorf("weeklist diferente\n--- got ---\n%q\n--- want ---\n%q", got, want)
+	}
+}
+
+func TestBuildWeeklistPreservesAlways(t *testing.T) {
+	source := `# Tasks
+- [ ] tarefa #always
+---
+# Hábitos
+## Rotina
+- [x] 5 min (U) - Fio dental #always
+`
+	const want = `# Tasks
+
+---
+# Hábitos
+## Rotina
+- [ ] 5 min (U) - Fio dental #always
+`
+	if got := BuildWeeklist(source); got != want {
+		t.Errorf("BuildWeeklist = %q, want %q", got, want)
 	}
 }
 

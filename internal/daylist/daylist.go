@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"daylist/internal/marker"
 )
 
 // Item é uma linha pendente da weeklist candidata a entrar na daylist.
@@ -18,6 +20,7 @@ type Item struct {
 	Time     string // "20 min", "5/15 min", "xST"... (vazio = perguntar)
 	Flag     string // "", "I", "U", "IU" (vazio = perguntar)
 	Desc     string
+	Always   bool // hábito com #always; tasks nunca recebem esse marcador
 }
 
 // Resolved é um item já com tempo e flag definidos pelo usuário.
@@ -86,6 +89,9 @@ func Parse(content string) []Item {
 		}
 		it.Section = section
 		it.Category = category
+		if section == "Hábitos" {
+			it.Desc, it.Always = marker.StripAlways(it.Desc)
+		}
 		items = append(items, it)
 	}
 	return items

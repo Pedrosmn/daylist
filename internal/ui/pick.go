@@ -48,6 +48,7 @@ type ToggleOptions struct {
 	FinishLabel string
 	Items       []string
 	Selected    []int
+	Locked      []int // itens sempre marcados e que não podem ser desmarcados
 	AllowBack   bool
 	Header      string
 }
@@ -203,6 +204,13 @@ func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 			marked[idx] = true
 		}
 	}
+	locked := make([]bool, len(opts.Items))
+	for _, idx := range opts.Locked {
+		if idx >= 0 && idx < len(locked) {
+			marked[idx] = true
+			locked[idx] = true
+		}
+	}
 
 	actionRows := 1
 	if opts.AllowBack {
@@ -290,6 +298,10 @@ func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 		if convErr != nil || n < 0 || n >= len(opts.Items) {
 			continue
 		}
+		if locked[n] {
+			cursor = itemRow(n)
+			continue
+		}
 		marked[n] = !marked[n]
 		cursor = itemRow(n)
 	}
@@ -328,6 +340,13 @@ func togglePlainOptions(opts ToggleOptions) (ToggleResult, error) {
 	for _, idx := range opts.Selected {
 		if idx >= 0 && idx < len(marked) {
 			marked[idx] = true
+		}
+	}
+	locked := make([]bool, len(opts.Items))
+	for _, idx := range opts.Locked {
+		if idx >= 0 && idx < len(locked) {
+			marked[idx] = true
+			locked[idx] = true
 		}
 	}
 
@@ -377,6 +396,9 @@ func togglePlainOptions(opts ToggleOptions) (ToggleResult, error) {
 		}
 		if n == 0 {
 			return ToggleResult{Selected: markedIndices(marked), Action: ToggleFinish}, nil
+		}
+		if locked[n-1] {
+			continue
 		}
 		marked[n-1] = !marked[n-1]
 	}
