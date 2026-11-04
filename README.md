@@ -12,6 +12,7 @@ terminal, criar a daylist do dia e registrar o tempo com o timer.
 - Obsidian instalado para abrir as notas pelo comando `daylist` sem subcomando.
 - `fzf` opcional. Sem ele, o CLI usa menus numerados e os mesmos comandos de
   etapa (`h`, `l`, `q`).
+- `notify-send` (libnotify) opcional, para notificações do timer no Linux.
 - Linux para abertura automática da nota, pois o comando usa `xdg-open`.
 
 ## Instalação
@@ -139,11 +140,18 @@ O timer grava o tempo na daylist em que foi iniciado, mesmo que o dia vire. O
 estado fica em `.daylist-timer-state.json` na raiz do vault. `timer` sem
 subcomando é equivalente a `timer status`.
 
+O tempo planejado do item define os limites mínimo e máximo. `5/15 min` usa 5 e
+15; `30 min` usa 30 e 30; `ST`/`xST` não têm limites. O status avisa ao atingir
+cada limite, mas não para o timer automaticamente. Se `notify-send` estiver
+disponível, uma notificação desktop é disparada uma vez por limite.
+
 `status --prompt` imprime uma saída curta, útil para prompt do shell:
 
 ```sh
 daylist timer status --prompt
 # ⏱ 25m
+# ⏱ 5m✓    (mínimo atingido)
+# ⏱ 15m⚠   (máximo atingido)
 ```
 
 ### `daylist version`
@@ -229,6 +237,8 @@ make clean      # remove binário e artefatos de cobertura
 
 O alvo `lint` é intencionalmente autocontido: usa `gofmt` e `go vet`, sem exigir
 `golangci-lint`.
+
+Itens adiados e ideias futuras ficam em [docs/backlog.md](docs/backlog.md).
 
 Estrutura resumida:
 

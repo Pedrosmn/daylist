@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -35,10 +36,12 @@ type Stage struct {
 // O parser é tolerante: aceita o formato completo, tempo sem flag, flag sem
 // tempo e linhas livres. Só itens já concluídos ([x]) ficam de fora.
 var (
-	timeFlagRe = regexp.MustCompile(`^- \[([ xX])\] (.+?) \((.*?)\) - (.*)$`)
-	timeOnlyRe = regexp.MustCompile(`(?i)^- \[([ xX])\] (x?st|\d+(?:/\d+)?\s*min) - (.*)$`)
-	flagOnlyRe = regexp.MustCompile(`^- \[([ xX])\] \(([IUiu]*)\) - (.*)$`)
-	plainRe    = regexp.MustCompile(`^- \[([ xX])\] (.+)$`)
+	timeFlagRe     = regexp.MustCompile(`^- \[([ xX])\] (.+?) \((.*?)\) - (.*)$`)
+	timeOnlyRe     = regexp.MustCompile(`(?i)^- \[([ xX])\] (x?st|\d+(?:/\d+)?\s*min) - (.*)$`)
+	flagOnlyRe     = regexp.MustCompile(`^- \[([ xX])\] \(([IUiu]*)\) - (.*)$`)
+	plainRe        = regexp.MustCompile(`^- \[([ xX])\] (.+)$`)
+	minutesRangeRe = regexp.MustCompile(`(?i)^(\d+)(?:\s*/\s*(\d+))?\s*min$`)
+	hoursRangeRe   = regexp.MustCompile(`(?i)^(\d+)\s*h(?:\s*(\d+)\s*(?:min|m)?)?$`)
 )
 
 // ParseWeeklist lê o arquivo da weeklist e devolve os itens pendentes.
@@ -77,7 +80,7 @@ func Parse(content string) []Item {
 		if section == "" {
 			continue
 		}
-		it, ok := parseLine(line)
+		it, ok := ParseLine(line)
 		if !ok {
 			continue
 		}
@@ -88,8 +91,8 @@ func Parse(content string) []Item {
 	return items
 }
 
-// parseLine interpreta uma linha "- [ ] ..." pendente.
-func parseLine(line string) (Item, bool) {
+// ParseLine interpreta uma linha "- [ ] ..." pendente.
+func ParseLine(line string) (Item, bool) {
 	if m := timeFlagRe.FindStringSubmatch(line); m != nil {
 		if isDone(m[1]) {
 			return Item{}, false
@@ -129,6 +132,51 @@ func parseLine(line string) (Item, bool) {
 	}
 
 	return Item{}, false
+}
+
+// ParseTimeRange interpreta "40 min", "5/15 min" ou "1h45" e devolve o
+// mínimo e o máximo em minutos. A faixa é normalizada quando vem invertida.
+func ParseTimeRange(value string) (min, max int, ok bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, 0, false
+	}
+
+	if m := minutesRangeRe.FindStringSubmatch(value); m != nil {
+		lo, err := strconv.Atoi(m[1])
+		if err != nil {
+			return 0, 0, false
+		}
+		hi := lo
+		if m[2] != "" {
+			hi, err = strconv.Atoi(m[2])
+			if err != nil {
+				return 0, 0, false
+			}
+		}
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		return lo, hi, true
+	}
+
+	if m := hoursRangeRe.FindStringSubmatch(value); m != nil {
+		hours, err := strconv.Atoi(m[1])
+		if err != nil {
+			return 0, 0, false
+		}
+		minutes := 0
+		if m[2] != "" {
+			minutes, err = strconv.Atoi(m[2])
+			if err != nil {
+				return 0, 0, false
+			}
+		}
+		total := hours*60 + minutes
+		return total, total, true
+	}
+
+	return 0, 0, false
 }
 
 func isDone(check string) bool {

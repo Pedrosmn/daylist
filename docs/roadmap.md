@@ -7,11 +7,14 @@
 > Atualizado em 2026-10-30: README e Makefile adicionados; CI validado no GitHub Actions; branch protection ativa na `main`.
 > Atualizado em 2026-11-02: item 5.3 concluído; data alvo e flags de `new` cobertas por testes.
 > Atualizado em 2026-11-02: `daylist version` e `--version` adicionados com `ldflags`.
+> Atualizado em 2026-11-04: timer sinaliza mínimo/máximo do tempo planejado; itens adiados foram para `docs/backlog.md`.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
+>
+> Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
 
 ## Estado atual
 
-O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim (sem busca). `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O que falta está em melhorias de UX e engenharia.
+O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim (sem busca). `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
 
 | Comando | Estado |
 |---|---|
@@ -19,13 +22,14 @@ O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regr
 | `daylist new` (`n`) | Wizard por etapas: Tasks → categorias de hábitos, com tempo/prioridade |
 | `daylist week` (`w`) | Gera em Go, sem QuickAdd; copia hábitos preservando tempo/prioridade |
 | `daylist feedback` (`f`) | Gera em Go, sem QuickAdd; resumo de hábitos por categoria |
-| `daylist timer start/pause/stop/status` (`t`) | Funcional e robusto: estado atômico, busca tolerante, gravação na daylist de origem e status (incl. `--prompt`) |
+| `daylist timer start/pause/stop/status` (`t`) | Funcional e robusto: estado atômico, busca tolerante, gravação na daylist de origem, status (incl. `--prompt`) e aviso de mínimo/máximo |
 | `daylist completion` | Gerado pelo Cobra |
+| `daylist version` | Mostra versão, commit e data de build embutidos |
 
 Estrutura:
 
 ```
-cmd/                  root, new, week, feedback, timer
+cmd/                  root, new, week, feedback, timer, version
 internal/daylist/     parser tolerante + Stages + Render + Write
 internal/week/        semanas ISO, parser de hábitos, weeklist e feedback
 internal/timer/       estado do timer + marcação ⏱ na daylist
@@ -66,10 +70,11 @@ As correções 1–6 do roadmap foram implementadas e cobertas por testes:
 5. **Weeklist da semana alvo** — o wizard usa a semana da data alvo e cai para a anterior com aviso.
 6. **Vault validado** — `Load` falha cedo com mensagem citando `DAYLIST_VAULT_PATH`.
 
-## 🐞 Pendente
+## 🧭 Escopo atual
 
-### Abertura de nota é Linux-only
-`internal/vault/vault.go` (`openURL`) usa `xdg-open`. Se um dia usar macOS/WSL, vale escolher entre `open`, `xdg-open` e `wslview`.
+- Linux-only por decisão; suporte a macOS/WSL fica fora do escopo.
+- Autodetecção do vault e etapa Extra estão adiadas em `docs/backlog.md`.
+- O timer sinaliza mínimo e máximo do tempo planejado, sem parar automaticamente.
 
 ---
 
@@ -93,15 +98,15 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - **Esc/q com itens marcados**: confirma “descartar tudo?” antes de perder as escolhas.
 - **Tempo total planejado**: exibido ao final como valor único ou faixa (`1h45–1h55`); sem limite e sem alerta.
 - **Duração personalizada**: continua aceitando número via `Input`.
-- **Etapa “Extra”**: adiada; a seção `# Extra` continua vazia por enquanto.
+- **Etapa “Extra”**: está no backlog; a seção `# Extra` continua vazia por enquanto.
 
 ---
 
 ## ⏱️ Timer: lacunas
 
 - ✅ `timer status`, `timer status --prompt` e `timer` sem subcomando (entregues em 2026-10-29).
-- Aviso/auto-stop quando o timer passar de N horas ou virar o dia.
-- Estado do timer vive em `.daylist-timer-state.json` na raiz do vault; considerar `$XDG_STATE_HOME/daylist/` para não poluir/sincronizar o vault.
+- ✅ Aviso visual no status/prompt ao atingir o mínimo e o máximo do tempo planejado; notificação desktop via `notify-send`. O máximo apenas sinaliza, sem auto-stop.
+- Estado do timer vive em `.daylist-timer-state.json` na raiz do vault; mover para `$XDG_STATE_HOME/daylist/` está no backlog.
 
 ---
 
@@ -112,23 +117,19 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - Cobertura adicionada em 2026-10-30: `internal/week` (semanas ISO, parser tolerante, weeklist e feedback), comandos `week`/`feedback` (flags, dry-run, print-path, alvos legados), navegação/voltar/cancelar em `ui` e fluxo do wizard em `internal/wizard`.
 - Cobertura adicionada em 2026-11-02: `cmd/new` (data alvo, padrão Hoje/Amanhã, cancelamento, erro do picker e flags).
 - Cobertura adicionada em 2026-11-02: `internal/version` (formato) e `cmd` (comando `version`, `--version` e ausência de vault).
+- Cobertura adicionada em 2026-11-04: limites mínimo/máximo do timer (parser, estado antigo, status/prompt e notificação única).
 - ✅ `Makefile`: `build`, `install`, `test`, `test-race`, `vet`, `fmt`, `fmt-check`, `lint`, `cover`, `ci` e `clean`; usa `go test -race -cover ./...` e embute versão/commit/data no build.
 - ✅ `README.md`: instalação, configuração do vault, comandos, teclas do wizard, formato dos arquivos, desenvolvimento e limitações.
 - ✅ CI no GitHub Actions: workflow `.github/workflows/ci.yml` roda `make ci` em push/PR; primeiro run verde em 2026-10-30.
 - ✅ `daylist version` + `--version` (ldflags) — útil com binário em `~/go/bin`.
-- **Autodetectar o vault**: o Obsidian Flatpak registra os vaults em
-  `~/.var/app/md.obsidian.Obsidian/config/obsidian/obsidian.json`
-  (neste ambiente aponta para `/home/pedro/documents/Obsidian/Vault 33`). Ler esse arquivo (mais os caminhos de Linux/Snap/macOS) e usar `--vault` como override acaba com a dependência de `DAYLIST_VAULT_PATH`/`DAYLIST_VAULT_NAME`.
+- Itens adiados, incluindo autodetecção do vault, estão em [docs/backlog.md](backlog.md).
 
 ---
 
 ## 💡 Ideias de produto
 
-- `daylist new --carry`: traz tasks não feitas de ontem para a daylist de hoje (fácil com o parser tolerante).
-- Ao dar `timer stop`, marcar o item correspondente na **weeklist** como `[x]` — ou um comando `daylist week sync`.
-- `daylist stats week`: tempo por categoria a partir dos `⏱` + taxa de conclusão (o feedback já tem a base).
-- Streaks por hábito.
-- `daylist today` / `daylist tomorrow` com `--dry-run` para pré-visualizar.
+As ideias de produto foram movidas para [docs/backlog.md](backlog.md) para manter
+o roadmap focado no escopo atual.
 
 ---
 
@@ -137,7 +138,7 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 1. ✅ **Crítico e rápido**: correções 1–6 (timer + semana alvo + validação do vault) — concluído em 2026-10-29.
 2. ✅ **Rápido**: `timer status` + `--prompt` e `--height` no fzf — concluído em 2026-10-29.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
-4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A etapa Extra fica adiada.
+4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A etapa Extra está no backlog.
 5. **Contínuo**: ✅ README/Makefile, CI, testes de `cmd` e versionamento do binário.
 
 ---

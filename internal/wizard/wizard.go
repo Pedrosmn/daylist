@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -51,9 +50,6 @@ var (
 	flagOptions = []string{
 		"Nenhuma", "Importante (I)", "Urgente (U)", "Importante e Urgente (IU)",
 	}
-
-	minutesRangeRe = regexp.MustCompile(`(?i)^(\d+)(?:\s*/\s*(\d+))?\s*min$`)
-	hoursRangeRe   = regexp.MustCompile(`(?i)^(\d+)\s*h(?:\s*(\d+)\s*(?:min|m)?)?$`)
 )
 
 // Run executa todas as etapas e devolve os itens resolvidos.
@@ -302,7 +298,7 @@ func printStageSummary(out io.Writer, title string, items []daylist.Resolved) {
 
 func totalTime(items []daylist.Resolved) (min, max int, ok bool) {
 	for _, it := range items {
-		lo, hi, valid := parseTimeRange(it.FinalTime)
+		lo, hi, valid := daylist.ParseTimeRange(it.FinalTime)
 		if !valid {
 			continue
 		}
@@ -311,49 +307,6 @@ func totalTime(items []daylist.Resolved) (min, max int, ok bool) {
 		ok = true
 	}
 	return min, max, ok
-}
-
-func parseTimeRange(value string) (min, max int, ok bool) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0, 0, false
-	}
-
-	if m := minutesRangeRe.FindStringSubmatch(value); m != nil {
-		lo, err := strconv.Atoi(m[1])
-		if err != nil {
-			return 0, 0, false
-		}
-		hi := lo
-		if m[2] != "" {
-			hi, err = strconv.Atoi(m[2])
-			if err != nil {
-				return 0, 0, false
-			}
-		}
-		if lo > hi {
-			lo, hi = hi, lo
-		}
-		return lo, hi, true
-	}
-
-	if m := hoursRangeRe.FindStringSubmatch(value); m != nil {
-		hours, err := strconv.Atoi(m[1])
-		if err != nil {
-			return 0, 0, false
-		}
-		minutes := 0
-		if m[2] != "" {
-			minutes, err = strconv.Atoi(m[2])
-			if err != nil {
-				return 0, 0, false
-			}
-		}
-		total := hours*60 + minutes
-		return total, total, true
-	}
-
-	return 0, 0, false
 }
 
 func formatRange(min, max int) string {

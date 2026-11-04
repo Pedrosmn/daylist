@@ -137,6 +137,32 @@ func TestParseTolerantFormats(t *testing.T) {
 	}
 }
 
+func TestParseTimeRange(t *testing.T) {
+	tests := []struct {
+		value string
+		min   int
+		max   int
+		ok    bool
+	}{
+		{"40 min", 40, 40, true},
+		{"5/15 min", 5, 15, true},
+		{"15/5 min", 5, 15, true},
+		{"1h", 60, 60, true},
+		{"1h45", 105, 105, true},
+		{"1h 45 min", 105, 105, true},
+		{"", 0, 0, false},
+		{"ST", 0, 0, false},
+		{"indefinido", 0, 0, false},
+	}
+	for _, tt := range tests {
+		min, max, ok := ParseTimeRange(tt.value)
+		if min != tt.min || max != tt.max || ok != tt.ok {
+			t.Errorf("ParseTimeRange(%q) = %d, %d, %v; want %d, %d, %v",
+				tt.value, min, max, ok, tt.min, tt.max, tt.ok)
+		}
+	}
+}
+
 func TestParseIgnoresDoneAndOtherSections(t *testing.T) {
 	content := `# Tasks
 - [x] 10 min (I) - já feita
