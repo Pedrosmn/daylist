@@ -9,6 +9,7 @@
 > Atualizado em 2026-11-02: `daylist version` e `--version` adicionados com `ldflags`.
 > Atualizado em 2026-11-04: timer sinaliza mínimo/máximo do tempo planejado; itens adiados foram para `docs/backlog.md`.
 > Atualizado em 2026-11-04: próximo ciclo definido (TUI, `#always`, motivações e Extra); tarefas detalhadas em `docs/backlog.md`.
+> Atualizado em 2026-11-04: `#always` restrito a hábitos e incluído automaticamente nas daylists da semana; adicionadas prévia, undo, fechamento do dia e motivação no foco.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
@@ -48,11 +49,16 @@ As tarefas detalhadas estão em [docs/backlog.md](backlog.md).
   Obsidian.
 - Ações do TUI: criar daylist, criar weeklist atual se faltar, ver e recarregar
   a daylist, marcar item como concluído, controlar o timer, adicionar Extra,
-  editar motivação e abrir a nota no Obsidian.
-- A criação da daylist reutiliza o wizard atual, suspendendo o TUI.
-- `#always` no fim de uma task ou hábito marca o item como “sempre”: ele fica
-  pré-selecionado em toda daylist e é copiado para a weeklist seguinte.
-- Motivação fica somente na daylist, como blockquote abaixo do item.
+  editar motivação, desfazer a última edição, fechar o dia e abrir a nota no
+  Obsidian.
+- A criação da daylist reutiliza o wizard atual, suspendendo o TUI, e mostra uma
+  prévia com os hábitos `#always`, o total planejado e alerta de sobrecarga.
+- `#always` é exclusivo de hábitos. O hábito marcado é copiado para a próxima
+  weeklist com o marcador e entra automaticamente, desmarcado, em toda daylist
+  daquela semana; não depende de seleção manual e não é removido no wizard.
+  Tasks não usam `#always` e continuam sem ser copiadas.
+- Motivação fica somente na daylist, como blockquote abaixo do item, e aparece
+  ao destacar o item ou iniciar o timer.
 - Hábito Extra é escolhido entre os hábitos da weeklist e inserido na categoria
   original de `# Hábitos`, para entrar no feedback normalmente.
 - Task Extra continua indo para `# Extra`.
@@ -93,8 +99,10 @@ As correções 1–6 do roadmap foram implementadas e cobertas por testes:
 
 - Linux-only por decisão; suporte a macOS/WSL fica fora do escopo.
 - Autodetecção do vault continua adiada em `docs/backlog.md`.
-- O próximo ciclo é o TUI com `#always`, motivações e Extra; o wizard não terá
-  uma etapa Extra separada.
+- O próximo ciclo é o TUI com `#always` para hábitos, motivações e Extra; o
+  wizard não terá uma etapa Extra separada.
+- A TUI também terá prévia da daylist, undo, fechamento do dia e motivação no
+  momento do foco.
 - O timer sinaliza mínimo e máximo do tempo planejado, sem parar automaticamente.
 
 ---
@@ -119,8 +127,9 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - **Esc/q com itens marcados**: confirma “descartar tudo?” antes de perder as escolhas.
 - **Tempo total planejado**: exibido ao final como valor único ou faixa (`1h45–1h55`); sem limite e sem alerta.
 - **Duração personalizada**: continua aceitando número via `Input`.
-- **Itens “sempre”**: o wizard deve iniciar com itens marcados com `#always` já
-  selecionados, mas ainda desmarcáveis.
+- **Hábitos “sempre”**: hábitos com `#always` entram automaticamente em toda
+  daylist da semana, desmarcados, sem seleção manual e sem opção de remover no
+  wizard. Tasks não usam `#always`.
 - **Etapa “Extra”**: não será uma etapa do wizard; a inclusão de Extra será uma
   ação do TUI.
 
@@ -164,7 +173,7 @@ o roadmap focado no escopo atual.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
 4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A inclusão de Extra será feita pelo TUI, não pelo wizard.
 5. **Contínuo**: ✅ README/Makefile, CI, testes de `cmd` e versionamento do binário.
-6. **Próximo ciclo**: TUI, `#always`, motivações e Extra — tarefas em [docs/backlog.md](backlog.md).
+6. **Próximo ciclo**: TUI, `#always` para hábitos, motivações, Extra, prévia da daylist, undo e fechamento do dia — tarefas em [docs/backlog.md](backlog.md).
 
 ---
 
