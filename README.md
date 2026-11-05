@@ -9,9 +9,9 @@ terminal, criar a daylist do dia e registrar o tempo com o timer.
 ## Requisitos
 
 - Go 1.23.2 ou superior (versão declarada no `go.mod`).
-- Obsidian instalado para abrir as notas pelo comando `daylist` sem subcomando.
+- Obsidian instalado para abrir as notas pelo comando `daylist open`.
 - `fzf` opcional. Sem ele, o CLI usa menus numerados e os mesmos comandos de
-  etapa (`h`, `l`, `q`).
+  etapa (`h`, `l`, `q`). O wizard é usado pelo TUI para criar a daylist.
 - `notify-send` (libnotify) opcional, para notificações do timer no Linux.
 - Linux para abertura automática da nota, pois o comando usa `xdg-open`.
 
@@ -76,8 +76,14 @@ Fleeting Notes/Daily/weeklists/YYYY-Www/feedback.md
 
 ### `daylist`
 
-Sem subcomando, abre a daylist de hoje no Obsidian. Se a nota ainda não existir,
-inicia o wizard e abre a nota depois da criação.
+Sem subcomando, abre o TUI da daylist de hoje quando stdin e stdout são um
+terminal interativo. Sem TTY, mantém o comportamento antigo de abrir a nota no
+Obsidian (criando pelo wizard se necessário).
+
+### `daylist open`
+
+Abre a daylist de hoje no Obsidian. Se a nota ainda não existir, inicia o wizard
+e abre a nota depois da criação.
 
 ### `daylist new` (`n`)
 
@@ -204,6 +210,42 @@ faixa, por exemplo:
 Tempo planejado: 1h45–1h55
 ```
 
+## TUI
+
+`daylist` sem subcomando abre o TUI baseado em Bubble Tea/Lipgloss. A tela
+mostra a daylist de hoje com tasks, hábitos por categoria, Extra, itens
+concluídos, motivações e o status do timer.
+
+| Tecla | Ação |
+|---|---|
+| `j` / `k`, `↑` / `↓` | mover o cursor |
+| `g` / `G`, `home` / `end` | início / fim da lista |
+| `Espaço` / `Enter` | marcar ou desmarcar o item |
+| `s` | iniciar o timer no item selecionado |
+| `p` | pausar ou retomar o timer |
+| `x` | parar o timer e gravar o tempo na daylist de origem |
+| `e` | editar ou remover a motivação do item |
+| `a` | adicionar Extra task |
+| `A` | adicionar hábito Extra escolhido da weeklist |
+| `W` | ver a weeklist atual e alternar `#always` em hábitos |
+| `u` | desfazer a última edição da daylist |
+| `n` | criar a daylist de hoje pelo wizard |
+| `c` | criar a weeklist atual, se estiver faltando |
+| `o` | abrir a daylist de hoje no Obsidian |
+| `r` | recarregar a daylist do disco |
+| `?` | tela de ajuda |
+| `q` / `Ctrl+C` | sair |
+
+A criação da daylist suspende o TUI e executa o wizard normal no terminal. O
+hábito Extra é escolhido entre os hábitos pendentes da weeklist e entra na
+categoria original de `# Hábitos`, contando no feedback. A task Extra vai para
+`# Extra`. A motivação aparece abaixo do item e também é mostrada ao iniciar o
+timer. O aviso de tempo mínimo/máximo do timer usa as mesmas regras e mensagens
+do CLI.
+
+O `#always` é exclusivo de hábitos: na tela da weeklist, `Espaço` alterna o
+marcador apenas quando o item está em `# Hábitos`.
+
 ## Formato dos arquivos
 
 A weeklist aceita o formato completo, só tempo, só prioridade ou texto livre:
@@ -261,6 +303,7 @@ internal/week/        semanas ISO, weeklist e feedback
 internal/timer/       estado do timer e marcação ⏱
 internal/wizard/      fluxo por etapas, voltar e tempo total
 internal/ui/          Pick, Toggle, Input e Confirm
+internal/tui/         modelo Bubble Tea, backend, formulários e telas
 internal/vault/       caminhos, validação e abertura do Obsidian
 docs/                 roadmap e documentação
 scripts/              scripts JS históricos do QuickAdd
@@ -274,5 +317,6 @@ referência histórica do fluxo antigo e não fazem parte da geração atual.
 - A abertura da nota usa `xdg-open`; macOS e WSL ainda não são suportados.
 - O vault ainda não é autodetectado: use `DAYLIST_VAULT_PATH` e
   `DAYLIST_VAULT_NAME`.
-- A etapa `Extra` do wizard está adiada.
-- CI e os testes restantes de `cmd` estão no roadmap.
+- A etapa `Extra` continua fora do wizard; a inclusão de Extra é feita pelo TUI.
+- A prévia da daylist antes da criação e a ação “Fechar o dia” ainda estão no
+  backlog.

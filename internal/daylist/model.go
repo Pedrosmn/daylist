@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"daylist/internal/marker"
 )
 
 var (
@@ -16,6 +18,8 @@ var (
 	ErrNoteItemExists = errors.New("item já existe na daylist")
 	// ErrEmptyDescription indica que um Extra foi criado sem descrição.
 	ErrEmptyDescription = errors.New("descrição vazia")
+	// ErrNotHabit indica que o marcador #always foi usado fora de # Hábitos.
+	ErrNotHabit = errors.New("#always só vale para hábitos")
 )
 
 // NoteItem é um item (- [ ] ...) de uma daylist. Line é o índice da linha no
@@ -29,6 +33,7 @@ type NoteItem struct {
 	Time            string
 	Flag            string
 	Desc            string
+	Always          bool // hábito com #always; sempre falso fora de # Hábitos
 	Timer           string
 	TimerMinutes    int
 	Motivation      string
@@ -193,6 +198,28 @@ func (n *Note) setChecked(line int, checked bool) (NoteItem, error) {
 	return n.itemAt(line)
 }
 
+// ToggleAlways alterna o marcador #always na descrição de um hábito. Fora de
+// # Hábitos devolve ErrNotHabit: tasks não usam esse marcador.
+func (n *Note) ToggleAlways(line int) (NoteItem, error) {
+	item, err := n.itemAt(line)
+	if err != nil {
+		return NoteItem{}, err
+	}
+	if item.Section != "Hábitos" {
+		return NoteItem{}, fmt.Errorf("%w: linha %d", ErrNotHabit, line)
+	}
+
+	// Edita apenas o fim da linha para preservar o formato original (inclusive
+	// parênteses vazios e espaçamento).
+	if item.Always {
+		n.lines[line], _ = marker.StripAlways(n.lines[line])
+	} else {
+		n.lines[line] = strings.TrimRight(n.lines[line], " \t") + " " + marker.Always
+	}
+	n.refresh()
+	return n.itemAt(line)
+}
+
 // SetMotivation grava a motivação do item como blockquote logo abaixo dele.
 // Texto vazio remove a motivação existente.
 func (n *Note) SetMotivation(line int, text string) (NoteItem, error) {
@@ -328,19 +355,23 @@ func normalizeSpaces(s string) string {
 }
 
 func formatNoteItem(time, flag, desc string) string {
+	return "- [ ] " + formatNoteBody(time, flag, desc)
+}
+
+func formatNoteBody(time, flag, desc string) string {
 	time = strings.TrimSpace(time)
 	flag = strings.TrimSpace(flag)
 	desc = strings.TrimSpace(desc)
 
 	switch {
 	case time != "" && flag != "":
-		return fmt.Sprintf("- [ ] %s (%s) - %s", time, flag, desc)
+		return fmt.Sprintf("%s (%s) - %s", time, flag, desc)
 	case time != "":
-		return fmt.Sprintf("- [ ] %s - %s", time, desc)
+		return fmt.Sprintf("%s - %s", time, desc)
 	case flag != "":
-		return fmt.Sprintf("- [ ] (%s) - %s", flag, desc)
+		return fmt.Sprintf("(%s) - %s", flag, desc)
 	default:
-		return "- [ ] " + desc
+		return desc
 	}
 }
 
@@ -386,6 +417,9 @@ func (n *Note) refresh() {
 		item.Category = category
 		item.Line = i
 		item.Raw = line
+		if sectionTitle == "Hábitos" {
+			item.Desc, item.Always = marker.StripAlways(item.Desc)
+		}
 
 		for j := i + 1; j < len(n.lines) && isBlockquote(n.lines[j]); j++ {
 			item.MotivationLines = append(item.MotivationLines, j)

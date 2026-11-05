@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -125,105 +123,22 @@ var timerStopCmd = &cobra.Command{
 }
 
 // promptText devolve a saída curta para RPROMPT.
-func promptText(s *timer.State) string {
-	total := s.TotalMs()
-	mins := timer.RoundedMinutes(total)
-	text := fmt.Sprintf("⏱ %dm", mins)
-	if min, max, ok := s.Limits(); ok {
-		switch {
-		case total >= int64(max)*60_000:
-			text = fmt.Sprintf("⏱ %dm⚠", mins)
-		case total >= int64(min)*60_000:
-			text = fmt.Sprintf("⏱ %dm✓", mins)
-		default:
-			text = fmt.Sprintf("⏱ %d/%dm", mins, max)
-		}
-	}
-	if s.Paused {
-		text += " ⏸"
-	}
-	return text
-}
+func promptText(s *timer.State) string { return timer.PromptText(s) }
 
 // statusText devolve a linha humana do timer atual.
-func statusText(s *timer.State) string {
-	total := s.TotalMs()
-	mins := timer.RoundedMinutes(total)
-	details := limitsText(s, total)
-	if s.Paused {
-		return fmt.Sprintf("Timer pausado: %s — %dmin acumulados%s%s", s.Desc, mins, details, startedAt(s))
-	}
-	return fmt.Sprintf("Timer rodando: %s — %dmin%s%s", s.Desc, mins, details, startedAt(s))
-}
-
-// limitsText devolve o planejado e o limite alcançado, se houver.
-func limitsText(s *timer.State, total int64) string {
-	min, max, ok := s.Limits()
-	if !ok {
-		return ""
-	}
-
-	parts := []string{"planejado " + formatLimits(min, max)}
-	switch {
-	case total >= int64(max)*60_000:
-		parts = append(parts, "máximo atingido")
-	case total >= int64(min)*60_000:
-		parts = append(parts, "mínimo atingido")
-	}
-	return " (" + strings.Join(parts, "; ") + ")"
-}
-
-func formatLimits(min, max int) string {
-	if min == max {
-		return fmt.Sprintf("%dmin", max)
-	}
-	return fmt.Sprintf("%d–%dmin", min, max)
-}
+func statusText(s *timer.State) string { return timer.StatusText(s) }
 
 // sendNotification é substituível nos testes.
-var sendNotification = notifyDesktop
-
-func notifyDesktop(title, body string) error {
-	if _, err := exec.LookPath("notify-send"); err != nil {
-		return err
-	}
-	return exec.Command("notify-send", "-a", "daylist", title, body).Run()
-}
+var sendNotification = timer.NotifyDesktop
 
 // maybeNotify dispara uma única notificação por limite atingido.
 func maybeNotify(s *timer.State, statePath string) {
-	total := s.TotalMs()
-	minReached, maxReached := s.Thresholds(total)
-	switch {
-	case maxReached:
-		if s.MaxNotified {
-			return
-		}
-		s.MaxNotified = true
-		s.MinNotified = true
-		_ = sendNotification("Daylist", fmt.Sprintf(
-			"Tempo máximo atingido: %s (%dmin)", s.Desc, timer.RoundedMinutes(total),
-		))
-	case minReached:
-		if s.MinNotified {
-			return
-		}
-		s.MinNotified = true
-		_ = sendNotification("Daylist", fmt.Sprintf(
-			"Tempo mínimo atingido: %s (%dmin)", s.Desc, timer.RoundedMinutes(total),
-		))
-	default:
+	message, changed := s.CheckThresholds(s.TotalMs())
+	if !changed {
 		return
 	}
+	_ = sendNotification("Daylist", message)
 	_ = s.Save(statePath)
-}
-
-// startedAt devolve " (iniciado às HH:MM)" ou "" quando Started não existe.
-func startedAt(s *timer.State) string {
-	if s.Started <= 0 {
-		return ""
-	}
-	return fmt.Sprintf(" (iniciado às %s)", time.UnixMilli(s.Started).Format("15:04"))
 }
 
 func statusTimer(v *vault.Vault, prompt bool) error {

@@ -56,7 +56,7 @@ func runNew(v *vault.Vault, opts newOptions, now time.Time, pick func(string, []
 		fmt.Println("Cancelado.")
 		return nil
 	}
-	return createDaylist(target, opts.DryRun)
+	return createDaylist(v, target, opts.DryRun)
 }
 
 // resolveTargetDate decide qual daylist criar. Devolve a data zero quando o
@@ -127,7 +127,7 @@ func weeklistForTarget(v *vault.Vault, target time.Time) (path, week string, fal
 }
 
 // createDaylist executa o wizard por etapas e grava (ou só mostra, em dry-run).
-func createDaylist(target time.Time, dryRun bool) error {
+func createDaylist(v *vault.Vault, target time.Time, dryRun bool) error {
 	path := v.DaylistFile(target)
 	if fileExists(path) {
 		fmt.Printf("Daylist de %s já existe: %s\n", target.Format("2006-01-02"), path)

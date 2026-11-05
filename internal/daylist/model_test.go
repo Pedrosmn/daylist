@@ -371,3 +371,87 @@ func TestExtraHabitCountsInFeedback(t *testing.T) {
 		t.Errorf("hábito Extra não foi contado no feedback:\n%s", feedback)
 	}
 }
+
+func TestParseNoteStripsAlwaysFromHabits(t *testing.T) {
+	note := ParseNote("# Hábitos\n## Rotina\n- [ ] 5 min () - Fio dental #always\n# Tasks\n- [ ] comprar café #always\n")
+
+	fio := findNoteItem(t, note, "Fio dental")
+	if !fio.Always {
+		t.Errorf("hábito deveria ter Always = true: %+v", fio)
+	}
+	if strings.Contains(fio.Desc, "#always") {
+		t.Errorf("marcador não foi removido da descrição: %q", fio.Desc)
+	}
+
+	// Tasks não usam #always: o texto é preservado normalmente.
+	var coffee NoteItem
+	for _, item := range note.Items() {
+		if item.Section == "Tasks" {
+			coffee = item
+		}
+	}
+	if coffee.Always || coffee.Desc != "comprar café #always" {
+		t.Errorf("task tratada como hábito: %+v", coffee)
+	}
+}
+
+func TestToggleAlwaysOnlyInHabits(t *testing.T) {
+	content := "# Hábitos\n## Rotina\n- [ ] 5 min () - Fio dental\n# Tasks\n- [ ] tarefa\n"
+	note := ParseNote(content)
+
+	fio := findNoteItem(t, note, "Fio dental")
+	item, err := note.ToggleAlways(fio.Line)
+	if err != nil {
+		t.Fatalf("ToggleAlways: %v", err)
+	}
+	if !item.Always || !strings.Contains(note.String(), "Fio dental #always") {
+		t.Errorf("marcador não foi adicionado:\n%s", note.String())
+	}
+
+	item, err = note.ToggleAlways(item.Line)
+	if err != nil {
+		t.Fatalf("ToggleAlways (remoção): %v", err)
+	}
+	if item.Always || strings.Contains(note.String(), "#always") {
+		t.Errorf("marcador não foi removido:\n%s", note.String())
+	}
+
+	task := NoteItem{}
+	for _, it := range note.Items() {
+		if it.Section == "Tasks" {
+			task = it
+		}
+	}
+	if _, err := note.ToggleAlways(task.Line); !errors.Is(err, ErrNotHabit) {
+		t.Errorf("erro = %v, want ErrNotHabit", err)
+	}
+}
+
+func TestToggleAlwaysPreservesTimeFlagAndCheckbox(t *testing.T) {
+	content := "# Hábitos\n## Estudos\n- [x] 10/20 min (IU) - AWS\n"
+	note := ParseNote(content)
+
+	item := findNoteItem(t, note, "AWS")
+	if _, err := note.ToggleAlways(item.Line); err != nil {
+		t.Fatalf("ToggleAlways: %v", err)
+	}
+
+	got := note.String()
+	const want = "# Hábitos\n## Estudos\n- [x] 10/20 min (IU) - AWS #always\n"
+	if got != want {
+		t.Errorf("conteúdo = %q, want %q", got, want)
+	}
+}
+
+func TestToggleAlwaysCRLF(t *testing.T) {
+	content := "# Hábitos\r\n## Rotina\r\n- [ ] 5 min () - Fio dental\r\n"
+	note := ParseNote(content)
+
+	item := findNoteItem(t, note, "Fio dental")
+	if _, err := note.ToggleAlways(item.Line); err != nil {
+		t.Fatalf("ToggleAlways: %v", err)
+	}
+	if !strings.Contains(note.String(), "- [ ] 5 min () - Fio dental #always\r\n") {
+		t.Errorf("CRLF não preservado: %q", note.String())
+	}
+}
