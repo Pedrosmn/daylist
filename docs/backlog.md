@@ -37,17 +37,17 @@ Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
 
 ### 2. Modelo da daylist
 
-- [ ] D1. Criar parser de nota da daylist com seções, categorias, itens
+- [x] D1. Criar parser de nota da daylist com seções, categorias, itens
   pendentes/concluídos, linha original, sufixo `⏱`, motivação e `# Extra`.
-- [ ] D2. Criar operações atômicas para marcar/desmarcar item e editar/remover
+- [x] D2. Criar operações atômicas para marcar/desmarcar item e editar/remover
   motivação, preservando CRLF e conteúdo não reconhecido.
-- [ ] D3. Criar inserção de Extra:
+- [x] D3. Criar inserção de Extra:
   - task livre em `# Extra`;
   - hábito escolhido da weeklist na categoria correspondente de `# Hábitos`;
   - evitar duplicar um hábito que já está na daylist.
-- [ ] D4. Garantir que o feedback conte hábitos extras naturalmente por estarem
+- [x] D4. Garantir que o feedback conte hábitos extras naturalmente por estarem
   em `# Hábitos`, sem categoria artificial.
-- [ ] D5. Cobrir D1–D4 com testes.
+- [x] D5. Cobrir D1–D4 com testes.
 
 ### 3. TUI
 

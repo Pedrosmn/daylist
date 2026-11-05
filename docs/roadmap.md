@@ -11,6 +11,7 @@
 > Atualizado em 2026-11-04: próximo ciclo definido (TUI, `#always`, motivações e Extra); tarefas detalhadas em `docs/backlog.md`.
 > Atualizado em 2026-11-04: `#always` restrito a hábitos e incluído automaticamente nas daylists da semana; adicionadas prévia, undo, fechamento do dia e motivação no foco.
 > Atualizado em 2026-11-04: `W1–W4` concluídos (marcador `#always` no parser, na próxima weeklist e no wizard).
+> Atualizado em 2026-11-05: `D1–D5` concluídos (modelo editável da daylist, motivação e Extra, com testes).
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
@@ -33,7 +34,7 @@ Estrutura:
 
 ```
 cmd/                  root, new, week, feedback, timer, version
-internal/daylist/     parser tolerante + Stages + Render + Write
+internal/daylist/     parser da weeklist + modelo editável da daylist
 internal/week/        semanas ISO, parser de hábitos, weeklist e feedback
 internal/timer/       estado do timer + marcação ⏱ na daylist
 internal/wizard/      fluxo por etapas, voltar, resolução de tempo/prioridade e total
