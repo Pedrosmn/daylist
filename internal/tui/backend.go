@@ -17,12 +17,10 @@ import (
 // falso, sem vault nem TTY.
 type Backend interface {
 	Today() time.Time
-	DaylistPath() string
-	DaylistRel() string
-	DaylistExists() bool
+	DaylistRelOn(time.Time) string
 	DaylistExistsOn(time.Time) bool
-	LoadNote() (*daylist.Note, error)
-	SaveNote(*daylist.Note) error
+	LoadNoteOn(time.Time) (*daylist.Note, error)
+	SaveNoteOn(time.Time, *daylist.Note) error
 
 	WeeklistPath() string
 	WeeklistExists() bool
@@ -68,22 +66,21 @@ func (b *RealBackend) Today() time.Time {
 	return time.Now()
 }
 
-func (b *RealBackend) DaylistPath() string { return b.Vault.DaylistFile(b.Today()) }
+func (b *RealBackend) DaylistRelOn(day time.Time) string { return b.Vault.DaylistRel(day) }
 
-func (b *RealBackend) DaylistRel() string { return b.Vault.DaylistRel(b.Today()) }
-
-func (b *RealBackend) DaylistExists() bool { return b.DaylistExistsOn(b.Today()) }
-
-func (b *RealBackend) DaylistExistsOn(t time.Time) bool {
-	return fileExists(b.Vault.DaylistFile(t))
+func (b *RealBackend) DaylistExistsOn(day time.Time) bool {
+	return fileExists(b.Vault.DaylistFile(day))
 }
 
-func (b *RealBackend) LoadNote() (*daylist.Note, error) {
-	return daylist.LoadNote(b.DaylistPath())
+func (b *RealBackend) LoadNoteOn(day time.Time) (*daylist.Note, error) {
+	return daylist.LoadNote(b.Vault.DaylistFile(day))
 }
 
-func (b *RealBackend) SaveNote(note *daylist.Note) error {
-	return note.Write(b.DaylistPath())
+// SaveNoteOn grava a nota no arquivo da data informada, não na data atual.
+// Isso evita que uma nota carregada antes da meia-noite seja gravada no dia
+// seguinte caso o relógio vire entre a edição e a gravação.
+func (b *RealBackend) SaveNoteOn(day time.Time, note *daylist.Note) error {
+	return note.Write(b.Vault.DaylistFile(day))
 }
 
 func (b *RealBackend) WeeklistPath() string {
