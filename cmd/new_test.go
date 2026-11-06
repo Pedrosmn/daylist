@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"daylist/internal/planner"
 	"daylist/internal/vault"
 )
 
@@ -30,7 +31,7 @@ func TestWeeklistForTargetUsesTargetWeek(t *testing.T) {
 	addWeeklist(t, v, "2026-W44")
 	want := addWeeklist(t, v, "2026-W45")
 
-	path, week, fallback, err := weeklistForTarget(v, target)
+	path, week, fallback, err := planner.WeeklistForTarget(v, target)
 	if err != nil {
 		t.Fatalf("weeklistForTarget: %v", err)
 	}
@@ -51,7 +52,7 @@ func TestWeeklistForTargetFallsBackToPreviousWeek(t *testing.T) {
 
 	want := addWeeklist(t, v, "2026-W44")
 
-	path, week, fallback, err := weeklistForTarget(v, target)
+	path, week, fallback, err := planner.WeeklistForTarget(v, target)
 	if err != nil {
 		t.Fatalf("weeklistForTarget: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestWeeklistForTargetNone(t *testing.T) {
 	targetPath := v.WeeklistFile("2026-W45")
 	previousPath := v.WeeklistFile("2026-W44")
 
-	path, week, fallback, err := weeklistForTarget(v, target)
+	path, week, fallback, err := planner.WeeklistForTarget(v, target)
 	if err == nil {
 		t.Fatal("weeklistForTarget deveria falhar sem nenhuma weeklist")
 	}
@@ -100,7 +101,7 @@ func TestWeeklistForTargetSundayToMonday(t *testing.T) {
 	}
 
 	want := addWeeklist(t, v, "2026-W45")
-	path, week, fallback, err := weeklistForTarget(v, monday)
+	path, week, fallback, err := planner.WeeklistForTarget(v, monday)
 	if err != nil {
 		t.Fatalf("weeklistForTarget: %v", err)
 	}
@@ -118,7 +119,7 @@ func TestWeeklistForTargetYearBoundary(t *testing.T) {
 	}
 
 	want := addWeeklist(t, v, "2026-W01")
-	path, week, fallback, err := weeklistForTarget(v, target)
+	path, week, fallback, err := planner.WeeklistForTarget(v, target)
 	if err != nil {
 		t.Fatalf("weeklistForTarget: %v", err)
 	}

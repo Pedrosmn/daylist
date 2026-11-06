@@ -51,38 +51,39 @@ Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
 
 ### 3. TUI
 
-- [ ] T1. Adicionar Bubble Tea/Bubbles/Lipgloss e a estrutura `internal/tui`.
-- [ ] T2. Fazer `daylist` abrir o TUI com TTY e criar `daylist open`.
-- [ ] T3. Exibir a daylist de hoje com tasks, hábitos, Extra, concluídos,
+- [x] T1. Adicionar Bubble Tea/Bubbles/Lipgloss e a estrutura `internal/tui`.
+- [x] T2. Fazer `daylist` abrir o TUI com TTY e criar `daylist open`.
+- [x] T3. Exibir a daylist de hoje com tasks, hábitos, Extra, concluídos,
   motivações e status do timer.
-- [ ] T4. Criar a daylist de hoje reutilizando o wizard com suspensão do TUI.
-- [ ] T5. Criar a weeklist atual quando estiver ausente.
-- [ ] T6. Alternar item concluído/pendente pelo TUI.
-- [ ] T7. Iniciar, pausar, retomar e parar o timer pelo TUI, com aviso de
+- [x] T4. Criar a daylist de hoje reutilizando o wizard com suspensão do TUI.
+- [x] T5. Criar a weeklist atual quando estiver ausente.
+- [x] T6. Alternar item concluído/pendente pelo TUI.
+- [x] T7. Iniciar, pausar, retomar e parar o timer pelo TUI, com aviso de
   mínimo/máximo compartilhado com o CLI.
-- [ ] T8. Adicionar Extra task/hábito:
+- [x] T8. Adicionar Extra task/hábito:
   - task: formulário com descrição, tempo, prioridade e motivação;
   - hábito: escolher da weeklist e inserir na categoria original.
-- [ ] T9. Editar motivação de item da daylist.
-- [ ] T10. Ver a weeklist atual e alternar o marcador `#always` apenas em
+- [x] T9. Editar motivação de item da daylist.
+- [x] T10. Ver a weeklist atual e alternar o marcador `#always` apenas em
   hábitos.
-- [ ] T11. Tela de ajuda, mensagens de erro e confirmações.
-- [ ] T12. Cobrir o modelo TUI com backend falso.
-- [ ] T13. Mostrar uma prévia antes de criar a daylist:
+- [x] T11. Tela de ajuda, mensagens de erro e confirmações.
+- [x] T12. Cobrir o modelo TUI com backend falso.
+- [x] T13. Mostrar uma prévia antes de criar a daylist:
   - hábitos `#always` que já entrarão automaticamente;
   - total de tempo planejado;
   - alerta quando o dia já nascer acima de um limite configurável.
-- [ ] T14. Adicionar undo no TUI para desfazer a última ação de edição.
-- [ ] T15. Adicionar ação “Fechar o dia” com resumo de planejado vs. real,
-  concluídos, pendentes e opção de trazer pendentes para amanhã.
-- [ ] T16. Mostrar a motivação do item ao destacá-lo e ao iniciar o timer.
+- [x] T14. Adicionar undo no TUI para desfazer a última ação de edição.
+- [x] T15. Adicionar ação “Fechar o dia” com resumo de planejado vs. real,
+  concluídos e pendentes. O fechamento é somente leitura: não copia pendentes
+  nem altera a nota.
+- [x] T16. Mostrar a motivação do item ao destacá-lo e ao iniciar o timer.
 
 ### 4. Documentação e validação
 
-- [ ] DOC1. Atualizar o README com TUI, `open`, `#always`, motivação, Extra,
+- [x] DOC1. Atualizar o README com TUI, `open`, `#always`, motivação, Extra,
   prévia da daylist, undo e fechamento do dia.
-- [ ] DOC2. Atualizar o roadmap com o próximo ciclo.
-- [ ] DOC3. Rodar `make ci` e testar o TUI manualmente em terminal real.
+- [x] DOC2. Atualizar o roadmap com o próximo ciclo.
+- [x] DOC3. Rodar `make ci` e testar o TUI manualmente em terminal real.
 
 ## Vault
 

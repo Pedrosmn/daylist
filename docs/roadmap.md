@@ -12,17 +12,21 @@
 > Atualizado em 2026-11-04: `#always` restrito a hábitos e incluído automaticamente nas daylists da semana; adicionadas prévia, undo, fechamento do dia e motivação no foco.
 > Atualizado em 2026-11-04: `W1–W4` concluídos (marcador `#always` no parser, na próxima weeklist e no wizard).
 > Atualizado em 2026-11-05: `D1–D5` concluídos (modelo editável da daylist, motivação e Extra, com testes).
+> Atualizado em 2026-11-05: TUI entregue com `internal/tui`, backend falso nos testes,
+> timer, Extra, motivação, weeklist `#always`, ajuda, confirmações e undo; prévia
+> da daylist e fechamento do dia concluídos no mesmo dia.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
 
 ## Estado atual
 
-O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim (sem busca). `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
+O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim (sem busca). O TUI em Bubble Tea cobre a daylist de hoje, timer, Extra, motivação, weeklist, undo, prévia da daylist e fechamento do dia, com backend falso nos testes. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
 
 | Comando | Estado |
 |---|---|
-| `daylist` | Abre a daylist de hoje no Obsidian; se não existir, cria pelo wizard no terminal |
+| `daylist` | Abre o TUI da daylist de hoje quando há TTY; sem TTY, mantém a abertura no Obsidian |
+| `daylist open` | Abre a daylist de hoje no Obsidian; se não existir, cria pelo wizard no terminal |
 | `daylist new` (`n`) | Wizard por etapas: Tasks → categorias de hábitos, com tempo/prioridade |
 | `daylist week` (`w`) | Gera em Go, sem QuickAdd; copia hábitos preservando tempo/prioridade |
 | `daylist feedback` (`f`) | Gera em Go, sem QuickAdd; resumo de hábitos por categoria |
@@ -38,14 +42,18 @@ internal/daylist/     parser da weeklist + modelo editável da daylist
 internal/week/        semanas ISO, parser de hábitos, weeklist e feedback
 internal/timer/       estado do timer + marcação ⏱ na daylist
 internal/wizard/      fluxo por etapas, voltar, resolução de tempo/prioridade e total
+internal/planner/     monta a daylist em memória para prévia e grava sob confirmação
 internal/ui/          Pick (fzf/menu) + Toggle (wizard) + Input + Confirm
-internal/tui/         (planejado) modelo, telas e ações do TUI
+internal/tui/         modelo Bubble Tea, backend real/falso, formulários e telas
 internal/vault/       caminhos e URL do Obsidian
 ```
 
 ## 🖥️ Próximo ciclo — TUI e metadados
 
 As tarefas detalhadas estão em [docs/backlog.md](backlog.md).
+
+Status em 2026-11-05: `T1–T16` e `DOC1` concluídos. A TUI cobre o ciclo diário
+com prévia antes da criação e fechamento do dia somente leitura.
 
 - `daylist` sem argumentos abre o TUI; `daylist open` mantém a abertura no
   Obsidian.
@@ -54,7 +62,10 @@ As tarefas detalhadas estão em [docs/backlog.md](backlog.md).
   editar motivação, desfazer a última edição, fechar o dia e abrir a nota no
   Obsidian.
 - A criação da daylist reutiliza o wizard atual, suspendendo o TUI, e mostra uma
-  prévia com os hábitos `#always`, o total planejado e alerta de sobrecarga.
+  prévia com os hábitos `#always`, o total planejado e alerta de sobrecarga
+  (`DAYLIST_DAY_LIMIT`, padrão de 8h).
+- “Fechar o dia” mostra planejado vs. real, concluídos e pendentes, sem alterar
+  a nota nem copiar pendentes para amanhã.
 - `#always` é exclusivo de hábitos. O hábito marcado é copiado para a próxima
   weeklist com o marcador e entra automaticamente, desmarcado, em toda daylist
   daquela semana; não depende de seleção manual e não é removido no wizard.
@@ -153,6 +164,8 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - Cobertura adicionada em 2026-11-02: `cmd/new` (data alvo, padrão Hoje/Amanhã, cancelamento, erro do picker e flags).
 - Cobertura adicionada em 2026-11-02: `internal/version` (formato) e `cmd` (comando `version`, `--version` e ausência de vault).
 - Cobertura adicionada em 2026-11-04: limites mínimo/máximo do timer (parser, estado antigo, status/prompt e notificação única).
+- Cobertura adicionada em 2026-11-05: modelo editável da daylist (`#always`, motivação e Extra) e TUI com backend falso (navegação, toggle, undo, timer, formulários, weeklist, ajuda e confirmações).
+- Cobertura adicionada em 2026-11-05: `internal/planner` (prévia, limite de 8h, cancelamento, nenhum item e gravação) e resumo/fechamento do dia (`daylist.Summarize` e TUI).
 - ✅ `Makefile`: `build`, `install`, `test`, `test-race`, `vet`, `fmt`, `fmt-check`, `lint`, `cover`, `ci` e `clean`; usa `go test -race -cover ./...` e embute versão/commit/data no build.
 - ✅ `README.md`: instalação, configuração do vault, comandos, teclas do wizard, formato dos arquivos, desenvolvimento e limitações.
 - ✅ CI no GitHub Actions: workflow `.github/workflows/ci.yml` roda `make ci` em push/PR; primeiro run verde em 2026-10-30.
@@ -175,7 +188,7 @@ o roadmap focado no escopo atual.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
 4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A inclusão de Extra será feita pelo TUI, não pelo wizard.
 5. **Contínuo**: ✅ README/Makefile, CI, testes de `cmd` e versionamento do binário.
-6. **Próximo ciclo**: TUI, `#always` para hábitos, motivações, Extra, prévia da daylist, undo e fechamento do dia — tarefas em [docs/backlog.md](backlog.md).
+6. ✅ **Próximo ciclo**: TUI entregue com prévia da daylist e fechamento do dia — tarefas em [docs/backlog.md](backlog.md).
 
 ---
 
