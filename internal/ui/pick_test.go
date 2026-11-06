@@ -44,7 +44,7 @@ func TestPickPlainInvalidIsCancel(t *testing.T) {
 
 func TestTogglePlainTogglesAndFinishes(t *testing.T) {
 	setStdin(t, "2\n3\n\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
+	got, err := togglePlain("escolha: ", []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestTogglePlainTogglesAndFinishes(t *testing.T) {
 
 func TestTogglePlainUntoggles(t *testing.T) {
 	setStdin(t, "2\n2\n\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
+	got, err := togglePlain("escolha: ", []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,20 +64,20 @@ func TestTogglePlainUntoggles(t *testing.T) {
 	}
 }
 
-func TestTogglePlainFinishRow(t *testing.T) {
-	setStdin(t, "0\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b"})
+func TestTogglePlainIgnoresZeroAndFinishesWithL(t *testing.T) {
+	setStdin(t, "0\n2\nl\n")
+	got, err := togglePlain("escolha: ", []string{"a", "b"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 0 {
-		t.Errorf("got = %v, want vazio", got)
+	if len(got) != 1 || got[0] != 1 {
+		t.Errorf("got = %v, want [1]", got)
 	}
 }
 
 func TestTogglePlainEOFKeepsMarks(t *testing.T) {
 	setStdin(t, "2\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
+	got, err := togglePlain("escolha: ", []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestTogglePlainEOFKeepsMarks(t *testing.T) {
 
 func TestTogglePlainIgnoresInvalid(t *testing.T) {
 	setStdin(t, "x\n9\n2\n\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b"})
+	got, err := togglePlain("escolha: ", []string{"a", "b"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,24 +210,33 @@ func fakeFzf(t *testing.T, exitCode int) string {
 
 // fakeFzfReply instala um fzf falso que devolve uma resposta fixa.
 func fakeFzfReply(t *testing.T, reply string) string {
+	argsFile, _ := fakeFzfReplyCapture(t, reply)
+	return argsFile
+}
+
+// fakeFzfReplyCapture é como fakeFzfReply, mas também grava o stdin recebido
+// para inspeção das linhas enviadas ao fzf.
+func fakeFzfReplyCapture(t *testing.T, reply string) (argsFile, stdinFile string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("teste usa um script /bin/sh")
 	}
 
 	dir := t.TempDir()
-	argsFile := filepath.Join(dir, "fzf-args")
+	argsFile = filepath.Join(dir, "fzf-args")
+	stdinFile = filepath.Join(dir, "fzf-stdin")
 	script := filepath.Join(dir, "fzf")
 
-	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FZF_FAKE_ARGS\"\nprintf '%s\\n' \"$FZF_FAKE_REPLY\"\n"
+	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FZF_FAKE_ARGS\"\ncat > \"$FZF_FAKE_STDIN\"\nprintf '%s\\n' \"$FZF_FAKE_REPLY\"\n"
 	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
 		t.Fatalf("WriteFile do fzf falso: %v", err)
 	}
 
 	t.Setenv("FZF_FAKE_ARGS", argsFile)
+	t.Setenv("FZF_FAKE_STDIN", stdinFile)
 	t.Setenv("FZF_FAKE_REPLY", reply)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return argsFile
+	return argsFile, stdinFile
 }
 
 func readFzfArgs(t *testing.T, path string) []string {
@@ -281,9 +290,9 @@ func TestPickFzfLayoutFlags(t *testing.T) {
 }
 
 func TestToggleFzfLayoutFlags(t *testing.T) {
-	argsFile := fakeFzf(t, 0)
+	argsFile := fakeFzfReply(t, "l\n0\t[ ] a")
 
-	got, err := Toggle("escolha: ", "Concluir", []string{"a", "b"})
+	got, err := Toggle("escolha: ", []string{"a", "b"})
 	if err != nil {
 		t.Fatalf("Toggle: %v", err)
 	}
@@ -300,26 +309,55 @@ func TestToggleFzfLayoutFlags(t *testing.T) {
 		"--disabled",
 		"--delimiter=\t",
 		"--with-nth=2..",
+		"--expect=l",
 	} {
 		if !hasArg(args, flag) {
 			t.Errorf("flag %q ausente: %v", flag, args)
 		}
 	}
-	if !hasArg(args, "--bind=start:pos(2)") {
+	if !hasArg(args, "--bind=start:pos(1)") {
 		t.Errorf("flag --bind ausente: %v", args)
 	}
 }
 
+func TestToggleFzfRowsHaveNoActionOptions(t *testing.T) {
+	_, stdinFile := fakeFzfReplyCapture(t, "l\n0\t[ ] a")
+
+	_, err := ToggleWithOptions(ToggleOptions{
+		Prompt:    "escolha: ",
+		Items:     []string{"a", "b"},
+		AllowBack: true,
+	})
+	if err != nil {
+		t.Fatalf("ToggleWithOptions: %v", err)
+	}
+
+	data, err := os.ReadFile(stdinFile)
+	if err != nil {
+		t.Fatalf("ReadFile do stdin: %v", err)
+	}
+	rows := string(data)
+	for _, unwanted := range []string{"-1\t", "-2\t", "Voltar", "Concluir"} {
+		if strings.Contains(rows, unwanted) {
+			t.Errorf("linha de ação %q ainda presente: %q", unwanted, rows)
+		}
+	}
+	for _, item := range []string{"0\t[ ] a", "1\t[ ] b"} {
+		if !strings.Contains(rows, item) {
+			t.Errorf("item %q ausente: %q", item, rows)
+		}
+	}
+}
+
 func TestToggleWithOptionsBackAndInitialSelection(t *testing.T) {
-	argsFile := fakeFzfReply(t, "-2\tvoltar")
+	argsFile := fakeFzfReply(t, "h\n1\t[ ] b")
 
 	res, err := ToggleWithOptions(ToggleOptions{
-		Prompt:      "escolha: ",
-		FinishLabel: "Concluir",
-		Items:       []string{"a", "b", "c"},
-		Selected:    []int{1},
-		AllowBack:   true,
-		Header:      "Etapa 2/3 · Estudos",
+		Prompt:    "escolha: ",
+		Items:     []string{"a", "b", "c"},
+		Selected:  []int{1},
+		AllowBack: true,
+		Header:    "Etapa 2/3 · Estudos",
 	})
 	if err != nil {
 		t.Fatalf("ToggleWithOptions: %v", err)
@@ -332,15 +370,17 @@ func TestToggleWithOptionsBackAndInitialSelection(t *testing.T) {
 	}
 
 	args := readFzfArgs(t, argsFile)
-	if !hasArg(args, "--bind=start:pos(4)") {
-		t.Errorf("posição inicial não considera as linhas de ação: %v", args)
+	if !hasArg(args, "--expect=l,h") {
+		t.Errorf("flag --expect ausente: %v", args)
+	}
+	if !hasArg(args, "--bind=start:pos(2)") {
+		t.Errorf("posição inicial incorreta: %v", args)
 	}
 	for _, arg := range args {
-		if strings.Contains(arg, "h:pos(2)+accept") {
-			return
+		if strings.Contains(arg, "h:pos(") {
+			t.Errorf("bind antigo de voltar ainda presente: %v", args)
 		}
 	}
-	t.Errorf("bind de voltar ausente: %v", args)
 }
 
 func TestConfirmUsesSafeDefault(t *testing.T) {
@@ -390,7 +430,7 @@ func TestPickFzfUsageError(t *testing.T) {
 func TestToggleFzfUsageError(t *testing.T) {
 	fakeFzf(t, 2)
 
-	_, err := Toggle("escolha: ", "Concluir", []string{"a", "b"})
+	_, err := Toggle("escolha: ", []string{"a", "b"})
 	if err == nil {
 		t.Fatal("Toggle deveria propagar o erro de uso do fzf")
 	}

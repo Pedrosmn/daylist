@@ -78,13 +78,12 @@ func Run(opts Options) (Result, error) {
 		locked := lockedIndices(stage.Items)
 
 		res, err := opts.UI.Toggle(ui.ToggleOptions{
-			Prompt:      fmt.Sprintf("Etapa %d/%d · %s › ", i+1, len(opts.Stages), stage.Title),
-			FinishLabel: "✅ Concluir " + stage.Title,
-			Items:       labels,
-			Selected:    withLocked(state.marked, locked, len(stage.Items)),
-			Locked:      locked,
-			AllowBack:   i > 0,
-			Header:      fmt.Sprintf("Etapa %d/%d · %s", i+1, len(opts.Stages), stage.Title),
+			Prompt:    fmt.Sprintf("Etapa %d/%d · %s › ", i+1, len(opts.Stages), stage.Title),
+			Items:     labels,
+			Selected:  withLocked(state.marked, locked, len(stage.Items)),
+			Locked:    locked,
+			AllowBack: i > 0,
+			Header:    fmt.Sprintf("Etapa %d/%d · %s", i+1, len(opts.Stages), stage.Title),
 		})
 		if err != nil {
 			return Result{}, err

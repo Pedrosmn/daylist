@@ -135,7 +135,7 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 
 - **Navegação Vim padrão** no fzf: `j`/`k`, `g`/`G`, `Ctrl-d`/`Ctrl-u`, `Enter`/`Espaço`, `h` para voltar, `l` para concluir e `q`/`Esc` para cancelar.
 - **Sem busca digitável** no fzf: `--disabled` e teclas imprimíveis neutralizadas; a lista é navegada apenas por movimento e marcação.
-- **“↩ Voltar etapa”**: `h` ou a linha de voltar reabre a etapa anterior preservando seleções, tempos e prioridades.
+- **Voltar etapa**: `h` reabre a etapa anterior preservando seleções, tempos e prioridades. Concluir e voltar são apenas atalhos: a lista não tem linhas de ação.
 - **Header com contagem**: `Etapa 2/9 · Estudos · 3 marcados · 5 no total`.
 - **Esc/q com itens marcados**: confirma “descartar tudo?” antes de perder as escolhas.
 - **Tempo total planejado**: exibido ao final como valor único ou faixa (`1h45–1h55`); sem limite e sem alerta.

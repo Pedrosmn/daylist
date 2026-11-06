@@ -44,13 +44,12 @@ const (
 
 // ToggleOptions configura uma etapa do wizard.
 type ToggleOptions struct {
-	Prompt      string
-	FinishLabel string
-	Items       []string
-	Selected    []int
-	Locked      []int // itens sempre marcados e que não podem ser desmarcados
-	AllowBack   bool
-	Header      string
+	Prompt    string
+	Items     []string
+	Selected  []int
+	Locked    []int // itens sempre marcados e que não podem ser desmarcados
+	AllowBack bool
+	Header    string
 }
 
 // ToggleResult devolve os itens marcados e a ação escolhida.
@@ -59,14 +58,13 @@ type ToggleResult struct {
 	Action   ToggleAction
 }
 
-// Toggle mostra uma lista onde Enter marca/desmarca o item destacado e a
-// linha "✅" encerra a etapa. Devolve os índices marcados na ordem original.
+// Toggle mostra uma lista onde Enter marca/desmarca o item destacado e l
+// encerra a etapa. Devolve os índices marcados na ordem original.
 // Esc devolve ErrCanceled.
-func Toggle(prompt, finishLabel string, items []string) ([]int, error) {
+func Toggle(prompt string, items []string) ([]int, error) {
 	res, err := ToggleWithOptions(ToggleOptions{
-		Prompt:      prompt,
-		FinishLabel: finishLabel,
-		Items:       items,
+		Prompt: prompt,
+		Items:  items,
 	})
 	if err != nil {
 		return nil, err
@@ -82,9 +80,6 @@ func Toggle(prompt, finishLabel string, items []string) ([]int, error) {
 func ToggleWithOptions(opts ToggleOptions) (ToggleResult, error) {
 	if len(opts.Items) == 0 {
 		return ToggleResult{Action: ToggleFinish}, nil
-	}
-	if opts.FinishLabel == "" {
-		opts.FinishLabel = "Concluir"
 	}
 	if path, err := exec.LookPath("fzf"); err == nil {
 		return toggleFzf(path, opts)
@@ -197,6 +192,7 @@ func pickFzf(path, prompt string, items []string) (string, error) {
 
 // toggleFzf roda uma invocação de fzf por tecla. Cada linha começa com um ID
 // oculto (--with-nth=2..), o que evita ambiguidade quando há labels iguais.
+// A lista contém apenas os itens: h e l são capturados por --expect.
 func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 	marked := make([]bool, len(opts.Items))
 	for _, idx := range opts.Selected {
@@ -212,11 +208,7 @@ func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 		}
 	}
 
-	actionRows := 1
-	if opts.AllowBack {
-		actionRows = 2
-	}
-	itemRow := func(i int) int { return actionRows + i + 1 }
+	itemRow := func(i int) int { return i + 1 }
 
 	cursor := itemRow(0)
 	for i, on := range marked {
@@ -224,6 +216,13 @@ func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 			cursor = itemRow(i)
 			break
 		}
+	}
+
+	expect := "l"
+	used := []rune{'j', 'k', 'g', 'G', 'l', 'q'}
+	if opts.AllowBack {
+		expect = "l,h"
+		used = append(used, 'h')
 	}
 
 	for {
@@ -234,11 +233,7 @@ func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 			}
 		}
 
-		rows := make([]string, 0, len(opts.Items)+actionRows)
-		rows = append(rows, fmt.Sprintf("-1\t%s (%d selecionado%s)", opts.FinishLabel, count, plural(count)))
-		if opts.AllowBack {
-			rows = append(rows, "-2\t↩ Voltar para a etapa anterior")
-		}
+		rows := make([]string, 0, len(opts.Items))
 		for i, it := range opts.Items {
 			mark := "[ ]"
 			if marked[i] {
@@ -252,13 +247,6 @@ func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 			pos = itemRow(0)
 		}
 
-		binds := "space:accept,l:pos(1)+accept,q:abort"
-		if opts.AllowBack {
-			binds += ",h:pos(2)+accept"
-		} else {
-			binds += ",h:ignore"
-		}
-
 		args := append(fzfLayoutArgs(), fzfNavArgs()...)
 		args = append(args,
 			"--no-multi",
@@ -266,8 +254,9 @@ func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 			"--with-nth=2..",
 			"--prompt="+opts.Prompt,
 			"--header="+toggleHeader(opts.Header, opts.AllowBack, count, len(opts.Items)),
-			"--bind="+binds,
-			fzfIgnoreArg('j', 'k', 'g', 'G', 'h', 'l', 'q'),
+			"--bind=space:accept,q:abort",
+			"--expect="+expect,
+			fzfIgnoreArg(used...),
 			fmt.Sprintf("--bind=start:pos(%d)", pos),
 		)
 		cmd := exec.Command(path, args...)
@@ -282,18 +271,32 @@ func toggleFzf(path string, opts ToggleOptions) (ToggleResult, error) {
 			return ToggleResult{}, err
 		}
 
-		line := strings.TrimRight(string(out), "\r\n")
+		// --expect imprime a tecla escolhida na primeira linha e o item
+		// destacado na segunda (a tecla fica vazia quando é Enter/Espaço).
+		lines := strings.Split(strings.TrimRight(string(out), "\r\n"), "\n")
+		key := ""
+		if len(lines) > 0 {
+			key = lines[0]
+		}
+		line := ""
+		if len(lines) > 1 {
+			line = lines[len(lines)-1]
+		}
+
+		switch key {
+		case "l":
+			return ToggleResult{Selected: markedIndices(marked), Action: ToggleFinish}, nil
+		case "h":
+			if opts.AllowBack {
+				return ToggleResult{Selected: markedIndices(marked), Action: ToggleBack}, nil
+			}
+			continue
+		}
+
 		if line == "" {
 			return ToggleResult{Selected: markedIndices(marked), Action: ToggleCancel}, nil
 		}
 		id, _, _ := strings.Cut(line, "\t")
-		switch id {
-		case "-1":
-			return ToggleResult{Selected: markedIndices(marked), Action: ToggleFinish}, nil
-		case "-2":
-			return ToggleResult{Selected: markedIndices(marked), Action: ToggleBack}, nil
-		}
-
 		n, convErr := strconv.Atoi(id)
 		if convErr != nil || n < 0 || n >= len(opts.Items) {
 			continue
@@ -320,11 +323,10 @@ func toggleHeader(custom string, allowBack bool, count, total int) string {
 
 // togglePlain é o fallback sem fzf. Ele continua numerado, mas aceita os
 // comandos h, l e q para voltar, concluir e cancelar.
-func togglePlain(prompt, finishLabel string, items []string) ([]int, error) {
+func togglePlain(prompt string, items []string) ([]int, error) {
 	res, err := togglePlainOptions(ToggleOptions{
-		Prompt:      prompt,
-		FinishLabel: finishLabel,
-		Items:       items,
+		Prompt: prompt,
+		Items:  items,
 	})
 	if err != nil {
 		return nil, err
@@ -362,7 +364,6 @@ func togglePlainOptions(opts ToggleOptions) (ToggleResult, error) {
 		if opts.Header != "" {
 			fmt.Fprintf(os.Stderr, "%s · %d marcados · %d no total\n", opts.Header, count, len(opts.Items))
 		}
-		fmt.Fprintf(os.Stderr, "0) %s (%d selecionado%s)\n", opts.FinishLabel, count, plural(count))
 		for i, it := range opts.Items {
 			mark := "[ ]"
 			if marked[i] {
@@ -370,7 +371,11 @@ func togglePlainOptions(opts ToggleOptions) (ToggleResult, error) {
 			}
 			fmt.Fprintf(os.Stderr, "%d) %s %s\n", i+1, mark, it)
 		}
-		fmt.Fprint(os.Stderr, "#? (Enter/l conclui, h volta, q cancela) ")
+		hint := "Enter/l conclui, q cancela"
+		if opts.AllowBack {
+			hint = "Enter/l conclui, h volta, q cancela"
+		}
+		fmt.Fprintf(os.Stderr, "#? (%s) ", hint)
 
 		line, err := stdin.ReadString('\n')
 		if err != nil && line == "" {
@@ -391,11 +396,8 @@ func togglePlainOptions(opts ToggleOptions) (ToggleResult, error) {
 		}
 
 		n, convErr := strconv.Atoi(line)
-		if convErr != nil || n < 0 || n > len(opts.Items) {
+		if convErr != nil || n < 1 || n > len(opts.Items) {
 			continue
-		}
-		if n == 0 {
-			return ToggleResult{Selected: markedIndices(marked), Action: ToggleFinish}, nil
 		}
 		if locked[n-1] {
 			continue
@@ -412,13 +414,6 @@ func markedIndices(marked []bool) []int {
 		}
 	}
 	return out
-}
-
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
 }
 
 func pickPlain(prompt string, items []string) (string, error) {
