@@ -1,17 +1,19 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import "daylist/internal/theme"
 
+// Aliases mantêm a view do TUI inalterada enquanto os estilos passam a ser
+// compartilhados com o wizard.
 var (
-	styleTitle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	styleSubtle   = lipgloss.NewStyle().Faint(true)
-	styleHeading  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	styleSelected = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
-	styleDone     = lipgloss.NewStyle().Faint(true).Strikethrough(true)
-	styleMotivate = lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("13"))
-	styleError    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9"))
-	styleOK       = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	styleTimer    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
-	styleHelp     = lipgloss.NewStyle().Faint(true)
-	styleForm     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+	styleTitle    = theme.Title
+	styleSubtle   = theme.Subtle
+	styleHeading  = theme.Heading
+	styleSelected = theme.Selected
+	styleDone     = theme.Done
+	styleMotivate = theme.Motivate
+	styleError    = theme.Error
+	styleOK       = theme.OK
+	styleTimer    = theme.Timer
+	styleHelp     = theme.Help
+	styleForm     = theme.Form
 )

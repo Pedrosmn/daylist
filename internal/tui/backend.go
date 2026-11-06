@@ -17,11 +17,10 @@ import (
 // falso, sem vault nem TTY.
 type Backend interface {
 	Today() time.Time
-	DaylistPath() string
-	DaylistRel() string
-	DaylistExists() bool
-	LoadNote() (*daylist.Note, error)
-	SaveNote(*daylist.Note) error
+	DaylistRelOn(time.Time) string
+	DaylistExistsOn(time.Time) bool
+	LoadNoteOn(time.Time) (*daylist.Note, error)
+	SaveNoteOn(time.Time, *daylist.Note) error
 
 	WeeklistPath() string
 	WeeklistExists() bool
@@ -29,8 +28,8 @@ type Backend interface {
 	SaveWeeklist(*daylist.Note) error
 	WeeklistHabits() ([]daylist.Item, error)
 
-	// PlanDaylist executa o wizard e devolve a prévia, sem gravar.
-	PlanDaylist() (*planner.Plan, error)
+	// PlanDaylist executa o wizard para a data alvo e devolve a prévia, sem gravar.
+	PlanDaylist(time.Time) (*planner.Plan, error)
 	WriteDaylist(*planner.Plan) error
 	CreateWeeklist() error
 	OpenDaylist() error
@@ -49,7 +48,7 @@ type RealBackend struct {
 	Vault *vault.Vault
 	Now   func() time.Time
 
-	PlanDaylistFn    func() (*planner.Plan, error)
+	PlanDaylistFn    func(time.Time) (*planner.Plan, error)
 	WriteDaylistFn   func(*planner.Plan) error
 	CreateWeeklistFn func() error
 	NotifyFn         func(title, body string) error
@@ -67,18 +66,21 @@ func (b *RealBackend) Today() time.Time {
 	return time.Now()
 }
 
-func (b *RealBackend) DaylistPath() string { return b.Vault.DaylistFile(b.Today()) }
+func (b *RealBackend) DaylistRelOn(day time.Time) string { return b.Vault.DaylistRel(day) }
 
-func (b *RealBackend) DaylistRel() string { return b.Vault.DaylistRel(b.Today()) }
-
-func (b *RealBackend) DaylistExists() bool { return fileExists(b.DaylistPath()) }
-
-func (b *RealBackend) LoadNote() (*daylist.Note, error) {
-	return daylist.LoadNote(b.DaylistPath())
+func (b *RealBackend) DaylistExistsOn(day time.Time) bool {
+	return fileExists(b.Vault.DaylistFile(day))
 }
 
-func (b *RealBackend) SaveNote(note *daylist.Note) error {
-	return note.Write(b.DaylistPath())
+func (b *RealBackend) LoadNoteOn(day time.Time) (*daylist.Note, error) {
+	return daylist.LoadNote(b.Vault.DaylistFile(day))
+}
+
+// SaveNoteOn grava a nota no arquivo da data informada, não na data atual.
+// Isso evita que uma nota carregada antes da meia-noite seja gravada no dia
+// seguinte caso o relógio vire entre a edição e a gravação.
+func (b *RealBackend) SaveNoteOn(day time.Time, note *daylist.Note) error {
+	return note.Write(b.Vault.DaylistFile(day))
 }
 
 func (b *RealBackend) WeeklistPath() string {
@@ -111,11 +113,11 @@ func (b *RealBackend) WeeklistHabits() ([]daylist.Item, error) {
 	return habits, nil
 }
 
-func (b *RealBackend) PlanDaylist() (*planner.Plan, error) {
+func (b *RealBackend) PlanDaylist(target time.Time) (*planner.Plan, error) {
 	if b.PlanDaylistFn == nil {
 		return nil, errors.New("planejamento da daylist não configurado")
 	}
-	return b.PlanDaylistFn()
+	return b.PlanDaylistFn(target)
 }
 
 func (b *RealBackend) WriteDaylist(plan *planner.Plan) error {

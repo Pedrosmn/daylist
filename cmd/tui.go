@@ -16,9 +16,8 @@ import (
 // Bubble Tea.
 func runTUI(v *vault.Vault) error {
 	backend := tui.NewRealBackend(v)
-	backend.PlanDaylistFn = func() (*planner.Plan, error) {
-		now := time.Now()
-		return planner.Build(v, now, uiPrompter{}, os.Stdout, now)
+	backend.PlanDaylistFn = func(target time.Time) (*planner.Plan, error) {
+		return planner.Build(v, target, uiPrompter{}, os.Stdout, time.Now())
 	}
 	backend.WriteDaylistFn = func(plan *planner.Plan) error {
 		return planner.Write(v, plan)

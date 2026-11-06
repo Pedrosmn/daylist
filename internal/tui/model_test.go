@@ -17,6 +17,8 @@ type fakeBackend struct {
 	now         time.Time
 	noteContent string
 	noteExists  bool
+	days        map[string]bool
+	notes       map[string]string // conteúdo por data (YYYY-MM-DD), quando definido
 	weekContent string
 	weekExists  bool
 	habits      []daylist.Item
@@ -27,19 +29,23 @@ type fakeBackend struct {
 	finishErr error
 	cleared   int
 
-	plan        *planner.Plan
-	planErr     error
-	planned     int
-	written     int
-	writeErr    error
-	createdWeek int
-	opened      int
-	notified    []string
+	plan           *planner.Plan
+	planErr        error
+	planned        int
+	plannedTarget  time.Time
+	written        int
+	writtenTargets []time.Time
+	writeErr       error
+	createdWeek    int
+	opened         int
+	notified       []string
 
-	savedNote string
-	noteSaves int
-	savedWeek string
-	weekSaves int
+	savedNote  string
+	noteSaves  int
+	savedDays  []string
+	savedByDay map[string]string
+	savedWeek  string
+	weekSaves  int
 }
 
 func newFake(note string) *fakeBackend {
@@ -50,22 +56,57 @@ func newFake(note string) *fakeBackend {
 	}
 }
 
-func (f *fakeBackend) Today() time.Time    { return f.now }
-func (f *fakeBackend) DaylistPath() string { return "/vault/days/today.md" }
-func (f *fakeBackend) DaylistRel() string  { return "days/today.md" }
-func (f *fakeBackend) DaylistExists() bool { return f.noteExists }
+func sameDate(a, b time.Time) bool {
+	return a.Format("2006-01-02") == b.Format("2006-01-02")
+}
 
-func (f *fakeBackend) LoadNote() (*daylist.Note, error) {
-	if !f.noteExists {
+func (f *fakeBackend) Today() time.Time { return f.now }
+
+func (f *fakeBackend) DaylistRelOn(day time.Time) string {
+	return "days/" + day.Format("2006-01-02") + ".md"
+}
+
+func (f *fakeBackend) DaylistExistsOn(day time.Time) bool {
+	key := day.Format("2006-01-02")
+	if _, ok := f.notes[key]; ok {
+		return true
+	}
+	if sameDate(day, f.now) {
+		return f.noteExists
+	}
+	return f.days[key]
+}
+
+func (f *fakeBackend) LoadNoteOn(day time.Time) (*daylist.Note, error) {
+	if content, ok := f.notes[day.Format("2006-01-02")]; ok {
+		return daylist.ParseNote(content), nil
+	}
+	if !sameDate(day, f.now) || !f.noteExists {
 		return nil, errors.New("daylist inexistente")
 	}
 	return daylist.ParseNote(f.noteContent), nil
 }
 
-func (f *fakeBackend) SaveNote(note *daylist.Note) error {
-	f.savedNote = note.String()
-	f.noteContent = f.savedNote
+func (f *fakeBackend) SaveNoteOn(day time.Time, note *daylist.Note) error {
+	key := day.Format("2006-01-02")
+	content := note.String()
+
+	if f.savedByDay == nil {
+		f.savedByDay = map[string]string{}
+	}
+	f.savedByDay[key] = content
+	f.savedDays = append(f.savedDays, key)
 	f.noteSaves++
+
+	if f.notes == nil {
+		f.notes = map[string]string{}
+	}
+	f.notes[key] = content
+	if sameDate(day, f.now) {
+		f.savedNote = content
+		f.noteContent = content
+		f.noteExists = true
+	}
 	return nil
 }
 
@@ -88,8 +129,9 @@ func (f *fakeBackend) SaveWeeklist(note *daylist.Note) error {
 
 func (f *fakeBackend) WeeklistHabits() ([]daylist.Item, error) { return f.habits, nil }
 
-func (f *fakeBackend) PlanDaylist() (*planner.Plan, error) {
+func (f *fakeBackend) PlanDaylist(target time.Time) (*planner.Plan, error) {
 	f.planned++
+	f.plannedTarget = target
 	if f.planErr != nil {
 		return nil, f.planErr
 	}
@@ -101,9 +143,12 @@ func (f *fakeBackend) WriteDaylist(plan *planner.Plan) error {
 		return f.writeErr
 	}
 	f.written++
-	f.savedNote = plan.Content
-	f.noteContent = plan.Content
-	f.noteExists = true
+	f.writtenTargets = append(f.writtenTargets, plan.Target)
+	if sameDate(plan.Target, f.now) {
+		f.savedNote = plan.Content
+		f.noteContent = plan.Content
+		f.noteExists = true
+	}
 	return nil
 }
 
@@ -209,8 +254,10 @@ func TestMissingDaylistView(t *testing.T) {
 
 	m := New(fake)
 	view := m.View()
-	if !strings.Contains(view, "ainda não existe") || !strings.Contains(view, "n  criar") {
-		t.Errorf("view sem aviso de daylist ausente:\n%s", view)
+	for _, want := range []string{"ainda não existe", "n  criar a daylist de hoje", "N  criar a daylist de amanhã"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view sem aviso de daylist ausente (%q):\n%s", want, view)
+		}
 	}
 }
 
@@ -229,6 +276,121 @@ func TestToggleAndUndo(t *testing.T) {
 	m = updateModel(t, m, keyRunes("u"))
 	if !strings.Contains(fake.savedNote, "- [ ] 10 min (I) - tarefa") {
 		t.Errorf("undo não restaurou o item: %q", fake.savedNote)
+	}
+}
+
+func TestTickAtMidnightReloadsToday(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa de ontem\n")
+	fake.now = time.Date(2026, time.November, 5, 23, 59, 0, 0, time.Local)
+	m := New(fake)
+
+	fake.now = time.Date(2026, time.November, 6, 0, 1, 0, 0, time.Local)
+	fake.notes = map[string]string{
+		"2026-11-06": "# Tasks\n- [ ] 10 min (I) - tarefa de hoje\n",
+	}
+
+	m = updateModel(t, m, tickMsg(fake.now))
+
+	if !sameDay(m.day, fake.now) {
+		t.Fatalf("dia carregado = %v, want %v", m.day, fake.now)
+	}
+	view := m.View()
+	if strings.Contains(view, "tarefa de ontem") {
+		t.Errorf("view ainda mostra a daylist de ontem:\n%s", view)
+	}
+	if !strings.Contains(view, "tarefa de hoje") {
+		t.Errorf("view não mostra a daylist de hoje:\n%s", view)
+	}
+	if !strings.Contains(m.st, "Novo dia") {
+		t.Errorf("status = %q, want aviso de novo dia", m.st)
+	}
+}
+
+func TestEditAfterMidnightReloadsBeforeWriting(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa de ontem\n")
+	fake.now = time.Date(2026, time.November, 5, 23, 59, 0, 0, time.Local)
+	m := New(fake)
+
+	// Sem esperar o tick: a primeira ação depois da meia-noite precisa
+	// recarregar a daylist e não pode gravar a nota antiga no dia novo.
+	fake.now = time.Date(2026, time.November, 6, 0, 1, 0, 0, time.Local)
+	fake.notes = map[string]string{
+		"2026-11-06": "# Tasks\n- [ ] 10 min (I) - tarefa de hoje\n",
+	}
+
+	m = updateModel(t, m, keyRunes(" "))
+	if len(fake.savedDays) != 0 {
+		t.Fatalf("gravou antes de recarregar: %v", fake.savedDays)
+	}
+	if !strings.Contains(m.st, "dia virou") {
+		t.Errorf("status = %q, want aviso de virada de dia", m.st)
+	}
+
+	m = updateModel(t, m, keyRunes(" "))
+	if len(fake.savedDays) != 1 || fake.savedDays[0] != "2026-11-06" {
+		t.Fatalf("gravações = %v, want só 2026-11-06", fake.savedDays)
+	}
+	if got := fake.savedByDay["2026-11-06"]; !strings.Contains(got, "- [x] 10 min (I) - tarefa de hoje") {
+		t.Errorf("item do dia novo não foi concluído:\n%s", got)
+	}
+	if _, ok := fake.savedByDay["2026-11-05"]; ok {
+		t.Errorf("nota de ontem foi gravada depois da virada: %v", fake.savedByDay)
+	}
+}
+
+func TestUndoAfterMidnightDoesNotRestoreOldDay(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa de ontem\n")
+	fake.now = time.Date(2026, time.November, 5, 23, 59, 0, 0, time.Local)
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes(" ")) // cria histórico de undo no dia 5
+	if len(fake.savedDays) != 1 || fake.savedDays[0] != "2026-11-05" {
+		t.Fatalf("setup: gravações = %v", fake.savedDays)
+	}
+
+	fake.now = time.Date(2026, time.November, 6, 0, 1, 0, 0, time.Local)
+	fake.notes = map[string]string{
+		"2026-11-06": "# Tasks\n- [ ] 10 min (I) - tarefa de hoje\n",
+	}
+
+	m = updateModel(t, m, keyRunes("u"))
+	if len(fake.savedDays) != 1 {
+		t.Fatalf("undo gravou depois da virada: %v", fake.savedDays)
+	}
+	if !strings.Contains(m.st, "dia virou") {
+		t.Errorf("status = %q, want aviso de virada de dia", m.st)
+	}
+
+	m = updateModel(t, m, keyRunes("u"))
+	if !strings.Contains(m.st, "Nada para desfazer") {
+		t.Errorf("status = %q, want histórico vazio", m.st)
+	}
+	if len(fake.savedDays) != 1 {
+		t.Errorf("undo deveria estar vazio, gravações = %v", fake.savedDays)
+	}
+}
+
+func TestStartTimerAfterMidnightUsesCurrentDay(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa de ontem\n")
+	fake.now = time.Date(2026, time.November, 5, 23, 59, 0, 0, time.Local)
+	m := New(fake)
+
+	fake.now = time.Date(2026, time.November, 6, 0, 1, 0, 0, time.Local)
+	fake.notes = map[string]string{
+		"2026-11-06": "# Tasks\n- [ ] 10 min (I) - tarefa de hoje\n",
+	}
+
+	m = updateModel(t, m, keyRunes("s")) // recarrega e aborta
+	m = updateModel(t, m, keyRunes("s")) // inicia no dia novo
+
+	if fake.timer == nil {
+		t.Fatal("timer não foi iniciado")
+	}
+	if fake.timer.File != "days/2026-11-06.md" {
+		t.Errorf("arquivo do timer = %q, want days/2026-11-06.md", fake.timer.File)
+	}
+	if fake.timer.Line != "- [ ] 10 min (I) - tarefa de hoje" {
+		t.Errorf("linha do timer = %q", fake.timer.Line)
 	}
 }
 
@@ -545,8 +707,58 @@ func TestCreateDaylistAlreadyExists(t *testing.T) {
 	m := New(fake)
 
 	m = updateModel(t, m, keyRunes("n"))
-	if !strings.Contains(m.st, "já existe") {
+	if !strings.Contains(m.st, "já existe") || !strings.Contains(m.st, "Pressione N") {
 		t.Errorf("status = %q", m.st)
+	}
+}
+
+func TestCreateTomorrowDaylist(t *testing.T) {
+	fake := newFake(testNote)
+	tomorrow := fake.now.AddDate(0, 0, 1)
+	plan := &planner.Plan{
+		Target:  tomorrow,
+		Week:    "2026-W45",
+		Content: "conteúdo de amanhã\n",
+	}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("N"))
+	if !strings.Contains(m.st, "amanhã") {
+		t.Fatalf("status = %q, want menção a amanhã", m.st)
+	}
+
+	m = updateModel(t, m, plannedMsg{plan: plan, target: tomorrow})
+	if m.mode != modePreview {
+		t.Fatalf("mode = %v, want preview", m.mode)
+	}
+	if !strings.Contains(m.View(), tomorrow.Format("2006-01-02")) {
+		t.Errorf("prévia não mostra a data de amanhã:\n%s", m.View())
+	}
+
+	m = updateModel(t, m, keyType(tea.KeyEnter))
+	if fake.written != 1 || len(fake.writtenTargets) != 1 || !sameDate(fake.writtenTargets[0], tomorrow) {
+		t.Fatalf("daylist de amanhã não foi gravada: written=%d targets=%v", fake.written, fake.writtenTargets)
+	}
+	if fake.noteContent != testNote {
+		t.Error("a daylist de hoje foi alterada ao criar a de amanhã")
+	}
+	if !strings.Contains(m.st, tomorrow.Format("2006-01-02")) {
+		t.Errorf("status = %q, want data de amanhã", m.st)
+	}
+}
+
+func TestCreateTomorrowAlreadyExists(t *testing.T) {
+	fake := newFake(testNote)
+	tomorrow := fake.now.AddDate(0, 0, 1)
+	fake.days = map[string]bool{tomorrow.Format("2006-01-02"): true}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("N"))
+	if !strings.Contains(m.st, "amanhã") || !strings.Contains(m.st, "já existe") {
+		t.Errorf("status = %q", m.st)
+	}
+	if strings.Contains(m.st, "Pressione N") {
+		t.Errorf("status de amanhã não deveria sugerir N: %q", m.st)
 	}
 }
 
@@ -602,8 +814,12 @@ func TestHelpModeReturnsOnAnyKey(t *testing.T) {
 	if m.mode != modeHelp {
 		t.Fatalf("mode = %v, want help", m.mode)
 	}
-	if !strings.Contains(m.View(), "Navegação") {
-		t.Errorf("view de ajuda inesperada:\n%s", m.View())
+	view := m.View()
+	if !strings.Contains(view, "Navegação") {
+		t.Errorf("view de ajuda inesperada:\n%s", view)
+	}
+	if !strings.Contains(view, "N  criar a daylist de amanhã") {
+		t.Errorf("ajuda não menciona a criação da daylist de amanhã:\n%s", view)
 	}
 	m = updateModel(t, m, keyRunes("x"))
 	if m.mode != modeMain {

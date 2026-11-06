@@ -41,8 +41,9 @@ const maxUndo = 30
 type tickMsg time.Time
 
 type plannedMsg struct {
-	plan *planner.Plan
-	err  error
+	plan   *planner.Plan
+	target time.Time
+	err    error
 }
 type weekCreatedMsg struct{ err error }
 type openedMsg struct{ err error }
@@ -53,7 +54,8 @@ type notifyFinishedMsg struct{}
 type Model struct {
 	backend Backend
 
-	now    time.Time
+	now    time.Time // horário atual, atualizado a cada tick
+	day    time.Time // data da daylist carregada em note (00:00 local)
 	note   *daylist.Note
 	items  []daylist.NoteItem
 	cursor int
@@ -74,6 +76,7 @@ type Model struct {
 	habitCursor  int
 
 	week       *daylist.Note
+	weekPath   string
 	weekItems  []daylist.NoteItem
 	weekCursor int
 
@@ -106,7 +109,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		m.now = m.backend.Today()
+		now := m.backend.Today()
+		if !sameDay(now, m.day) {
+			m.reload()
+			m.st = "Novo dia: daylist de hoje recarregada."
+			if m.mode == modeWeeklist || m.mode == modeForm || m.mode == modeHabitPick ||
+				m.mode == modeConfirm || m.mode == modePreview {
+				m.form = nil
+				m.week = nil
+				m.habitChoices = nil
+				m.preview = nil
+				m.mode = modeMain
+			}
+		} else {
+			m.now = now
+		}
 		return m, tea.Batch(tickCmd(), m.checkThresholds())
 
 	case plannedMsg:
@@ -117,7 +134,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case errors.Is(msg.err, planner.ErrNoItems):
 			m.st = "Nenhum item selecionado."
 		case errors.Is(msg.err, planner.ErrDaylistExists):
-			m.st = "A daylist de hoje já existe."
+			m.st = m.daylistExistsMessage(msg.target)
 		case msg.err != nil:
 			m.err = msg.err.Error()
 		case msg.plan != nil:
@@ -207,7 +224,9 @@ func (m *Model) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		m.undoLast()
 	case "n":
-		return m, m.planDaylist()
+		return m, m.planDaylist(m.backend.Today())
+	case "N":
+		return m, m.planDaylist(m.backend.Today().AddDate(0, 0, 1))
 	case "F":
 		m.openClose()
 	case "c":
@@ -319,11 +338,18 @@ func (m *Model) updateWeeklist(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) reload() {
 	m.now = m.backend.Today()
+	day := dateOnly(m.now)
+	if !m.day.IsZero() && !sameDay(day, m.day) {
+		// O histórico de undo pertence à daylist do dia anterior; aplicá-lo
+		// depois da virada gravaria o conteúdo antigo no dia novo.
+		m.undo = nil
+	}
+	m.day = day
 	m.note = nil
 	m.items = nil
 
-	if m.backend.DaylistExists() {
-		note, err := m.backend.LoadNote()
+	if m.backend.DaylistExistsOn(m.day) {
+		note, err := m.backend.LoadNoteOn(m.day)
 		if err != nil {
 			m.err = "não foi possível ler a daylist: " + err.Error()
 		} else {
@@ -339,6 +365,28 @@ func (m *Model) reload() {
 	} else {
 		m.timer = state
 	}
+}
+
+// ensureToday garante que a nota em memória pertence ao dia atual. Se o dia
+// virou, recarrega a daylist e devolve false para o chamador abortar a ação:
+// a linha selecionada e o formulário em andamento podem não valer mais.
+func (m *Model) ensureToday() bool {
+	now := m.backend.Today()
+	if !m.day.IsZero() && sameDay(now, m.day) {
+		m.now = now
+		return true
+	}
+	m.reload()
+	m.st = "O dia virou; a daylist de hoje foi recarregada. Repita a ação."
+	return false
+}
+
+func dateOnly(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
+func sameDay(a, b time.Time) bool {
+	return a.Year() == b.Year() && a.YearDay() == b.YearDay()
 }
 
 func (m *Model) clampCursor() {
@@ -421,6 +469,9 @@ func (m *Model) pushUndo() {
 }
 
 func (m *Model) undoLast() {
+	if !m.ensureToday() {
+		return
+	}
 	if len(m.undo) == 0 {
 		m.st = "Nada para desfazer."
 		return
@@ -429,7 +480,7 @@ func (m *Model) undoLast() {
 	m.undo = m.undo[:len(m.undo)-1]
 
 	note := daylist.ParseNote(snapshot)
-	if err := m.backend.SaveNote(note); err != nil {
+	if err := m.backend.SaveNoteOn(m.day, note); err != nil {
 		m.err = "não foi possível desfazer: " + err.Error()
 		return
 	}
@@ -438,6 +489,9 @@ func (m *Model) undoLast() {
 }
 
 func (m *Model) toggleSelected() {
+	if !m.ensureToday() {
+		return
+	}
 	item, ok := m.selected()
 	if !ok {
 		return
@@ -448,7 +502,7 @@ func (m *Model) toggleSelected() {
 		m.err = err.Error()
 		return
 	}
-	if err := m.backend.SaveNote(m.note); err != nil {
+	if err := m.backend.SaveNoteOn(m.day, m.note); err != nil {
 		m.err = "não foi possível gravar a daylist: " + err.Error()
 		m.reload()
 		return
@@ -464,6 +518,9 @@ func (m *Model) toggleSelected() {
 }
 
 func (m *Model) editMotivation() {
+	if !m.ensureToday() {
+		return
+	}
 	item, ok := m.selected()
 	if !ok {
 		return
@@ -474,6 +531,9 @@ func (m *Model) editMotivation() {
 }
 
 func (m *Model) openExtraTask() {
+	if !m.ensureToday() {
+		return
+	}
 	if m.note == nil {
 		m.err = "crie a daylist de hoje antes de adicionar um Extra."
 		return
@@ -483,6 +543,9 @@ func (m *Model) openExtraTask() {
 }
 
 func (m *Model) openExtraHabit() {
+	if !m.ensureToday() {
+		return
+	}
 	if m.note == nil {
 		m.err = "crie a daylist de hoje antes de adicionar um Extra."
 		return
@@ -510,6 +573,11 @@ func (m *Model) openExtraHabit() {
 func (m *Model) submitForm() tea.Cmd {
 	form := m.form
 	if form == nil || m.note == nil {
+		return nil
+	}
+	if !m.ensureToday() {
+		m.form = nil
+		m.mode = modeMain
 		return nil
 	}
 
@@ -553,7 +621,7 @@ func (m *Model) submitForm() tea.Cmd {
 		return nil
 	}
 
-	if err := m.backend.SaveNote(m.note); err != nil {
+	if err := m.backend.SaveNoteOn(m.day, m.note); err != nil {
 		m.err = "não foi possível gravar a daylist: " + err.Error()
 		m.form = nil
 		m.mode = modeMain
@@ -584,6 +652,9 @@ func (m *Model) submitForm() tea.Cmd {
 // --- timer ---
 
 func (m *Model) startTimer() {
+	if !m.ensureToday() {
+		return
+	}
 	if m.note == nil {
 		m.err = "crie a daylist de hoje antes de iniciar o timer."
 		return
@@ -607,7 +678,7 @@ func (m *Model) startTimer() {
 		return
 	}
 
-	state := timer.New(item.Raw, m.backend.DaylistRel())
+	state := timer.New(item.Raw, m.backend.DaylistRelOn(m.day))
 	if err := m.backend.SaveTimer(state); err != nil {
 		m.err = "não foi possível iniciar o timer: " + err.Error()
 		return
@@ -695,21 +766,42 @@ func (f execFunc) SetStdin(io.Reader)  {}
 func (f execFunc) SetStdout(io.Writer) {}
 func (f execFunc) SetStderr(io.Writer) {}
 
-func (m *Model) planDaylist() tea.Cmd {
-	if m.backend.DaylistExists() {
-		m.st = "A daylist de hoje já existe."
+func (m *Model) planDaylist(target time.Time) tea.Cmd {
+	if m.backend.DaylistExistsOn(target) {
+		m.st = m.daylistExistsMessage(target)
 		return nil
 	}
 
 	var plan *planner.Plan
-	m.st = "Criando a daylist no wizard..."
+	m.st = fmt.Sprintf("Criando a daylist de %s no wizard...", m.dateWord(target))
 	return tea.Exec(execFunc(func() error {
 		var err error
-		plan, err = m.backend.PlanDaylist()
+		plan, err = m.backend.PlanDaylist(target)
 		return err
 	}), func(err error) tea.Msg {
-		return plannedMsg{plan: plan, err: err}
+		return plannedMsg{plan: plan, target: target, err: err}
 	})
+}
+
+// dateWord descreve a data alvo em relação ao dia atual do TUI.
+func (m *Model) dateWord(t time.Time) string {
+	today := m.backend.Today()
+	switch t.Format("2006-01-02") {
+	case today.Format("2006-01-02"):
+		return "hoje"
+	case today.AddDate(0, 0, 1).Format("2006-01-02"):
+		return "amanhã"
+	default:
+		return t.Format("2006-01-02")
+	}
+}
+
+func (m *Model) daylistExistsMessage(target time.Time) string {
+	msg := fmt.Sprintf("A daylist de %s já existe.", m.dateWord(target))
+	if m.dateWord(target) == "hoje" {
+		msg += " Pressione N para criar a de amanhã."
+	}
+	return msg
 }
 
 func (m *Model) openClose() {
@@ -764,7 +856,10 @@ func (m *Model) createWeeklist() tea.Cmd {
 }
 
 func (m *Model) openDaylist() tea.Cmd {
-	if !m.backend.DaylistExists() {
+	if !m.ensureToday() {
+		return nil
+	}
+	if !m.backend.DaylistExistsOn(m.day) {
 		m.err = "a daylist de hoje ainda não existe."
 		return nil
 	}
@@ -784,6 +879,7 @@ func (m *Model) showWeeklist() {
 	}
 
 	m.week = note
+	m.weekPath = m.backend.WeeklistPath()
 	m.weekItems = note.Items()
 	m.weekCursor = 0
 	for i, item := range m.weekItems {
@@ -797,6 +893,13 @@ func (m *Model) showWeeklist() {
 
 func (m *Model) toggleAlways() {
 	if m.week == nil || len(m.weekItems) == 0 {
+		return
+	}
+	if m.weekPath != "" && m.weekPath != m.backend.WeeklistPath() {
+		m.week = nil
+		m.weekItems = nil
+		m.mode = modeMain
+		m.st = "A semana virou; abra a weeklist atual novamente."
 		return
 	}
 	item := m.weekItems[m.weekCursor]

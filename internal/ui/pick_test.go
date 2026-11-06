@@ -2,13 +2,10 @@ package ui
 
 import (
 	"bufio"
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // setStdin troca o reader compartilhado por um conteúdo fixo e devolve a
@@ -44,7 +41,7 @@ func TestPickPlainInvalidIsCancel(t *testing.T) {
 
 func TestTogglePlainTogglesAndFinishes(t *testing.T) {
 	setStdin(t, "2\n3\n\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
+	got, err := togglePlain("escolha: ", []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +52,7 @@ func TestTogglePlainTogglesAndFinishes(t *testing.T) {
 
 func TestTogglePlainUntoggles(t *testing.T) {
 	setStdin(t, "2\n2\n\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
+	got, err := togglePlain("escolha: ", []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,20 +61,20 @@ func TestTogglePlainUntoggles(t *testing.T) {
 	}
 }
 
-func TestTogglePlainFinishRow(t *testing.T) {
-	setStdin(t, "0\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b"})
+func TestTogglePlainIgnoresZeroAndFinishesWithL(t *testing.T) {
+	setStdin(t, "0\n2\nl\n")
+	got, err := togglePlain("escolha: ", []string{"a", "b"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 0 {
-		t.Errorf("got = %v, want vazio", got)
+	if len(got) != 1 || got[0] != 1 {
+		t.Errorf("got = %v, want [1]", got)
 	}
 }
 
 func TestTogglePlainEOFKeepsMarks(t *testing.T) {
 	setStdin(t, "2\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b", "c"})
+	got, err := togglePlain("escolha: ", []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +85,7 @@ func TestTogglePlainEOFKeepsMarks(t *testing.T) {
 
 func TestTogglePlainIgnoresInvalid(t *testing.T) {
 	setStdin(t, "x\n9\n2\n\n")
-	got, err := togglePlain("escolha: ", "Concluir", []string{"a", "b"})
+	got, err := togglePlain("escolha: ", []string{"a", "b"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +169,7 @@ func TestTogglePlainLockedIsAutoSelected(t *testing.T) {
 
 func TestInputTrims(t *testing.T) {
 	setStdin(t, "  45  \n")
-	got, err := Input("min: ")
+	got, err := inputPlain("min: ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,220 +178,282 @@ func TestInputTrims(t *testing.T) {
 	}
 }
 
-// fakeFzf instala um fzf falso no PATH. Com exitCode 0 ele devolve a primeira
-// linha da entrada; com outro código apenas sai com esse código.
-func fakeFzf(t *testing.T, exitCode int) string {
+// --- modelos Bubble Tea ---
+
+func runeKey(r rune) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+}
+
+func typeKey(k tea.KeyType) tea.KeyMsg {
+	return tea.KeyMsg{Type: k}
+}
+
+func updateToggle(t *testing.T, m *toggleModel, msg tea.Msg) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("teste usa um script /bin/sh")
-	}
-
-	dir := t.TempDir()
-	argsFile := filepath.Join(dir, "fzf-args")
-	script := filepath.Join(dir, "fzf")
-
-	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FZF_FAKE_ARGS\"\n"
-	if exitCode == 0 {
-		content += "IFS= read -r line\nprintf '%s\\n' \"$line\"\n"
-	} else {
-		content += fmt.Sprintf("exit %d\n", exitCode)
-	}
-	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
-		t.Fatalf("WriteFile do fzf falso: %v", err)
-	}
-
-	t.Setenv("FZF_FAKE_ARGS", argsFile)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return argsFile
-}
-
-// fakeFzfReply instala um fzf falso que devolve uma resposta fixa.
-func fakeFzfReply(t *testing.T, reply string) string {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("teste usa um script /bin/sh")
-	}
-
-	dir := t.TempDir()
-	argsFile := filepath.Join(dir, "fzf-args")
-	script := filepath.Join(dir, "fzf")
-
-	content := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$FZF_FAKE_ARGS\"\nprintf '%s\\n' \"$FZF_FAKE_REPLY\"\n"
-	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
-		t.Fatalf("WriteFile do fzf falso: %v", err)
-	}
-
-	t.Setenv("FZF_FAKE_ARGS", argsFile)
-	t.Setenv("FZF_FAKE_REPLY", reply)
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return argsFile
-}
-
-func readFzfArgs(t *testing.T, path string) []string {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile dos args: %v", err)
-	}
-	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-}
-
-func hasArg(args []string, want string) bool {
-	for _, arg := range args {
-		if arg == want {
-			return true
-		}
-	}
-	return false
-}
-
-func TestPickFzfLayoutFlags(t *testing.T) {
-	argsFile := fakeFzf(t, 0)
-
-	got, err := Pick("escolha: ", []string{"a", "b"})
-	if err != nil {
-		t.Fatalf("Pick: %v", err)
-	}
-	if got != "a" {
-		t.Fatalf("Pick = %q, want %q", got, "a")
-	}
-
-	args := readFzfArgs(t, argsFile)
-	for _, flag := range []string{
-		"--height=70%",
-		"--border",
-		"--info=inline",
-		"--layout=reverse",
-		"--disabled",
-		"--prompt=escolha: ",
-	} {
-		if !hasArg(args, flag) {
-			t.Errorf("flag %q ausente: %v", flag, args)
-		}
-	}
-	for _, arg := range args {
-		if strings.Contains(arg, "j:down,k:up") {
-			return
-		}
-	}
-	t.Errorf("binds Vim ausentes: %v", args)
-}
-
-func TestToggleFzfLayoutFlags(t *testing.T) {
-	argsFile := fakeFzf(t, 0)
-
-	got, err := Toggle("escolha: ", "Concluir", []string{"a", "b"})
-	if err != nil {
-		t.Fatalf("Toggle: %v", err)
-	}
-	if len(got) != 0 {
-		t.Errorf("Toggle = %v, want vazio", got)
-	}
-
-	args := readFzfArgs(t, argsFile)
-	for _, flag := range []string{
-		"--height=70%",
-		"--border",
-		"--info=inline",
-		"--layout=reverse",
-		"--disabled",
-		"--delimiter=\t",
-		"--with-nth=2..",
-	} {
-		if !hasArg(args, flag) {
-			t.Errorf("flag %q ausente: %v", flag, args)
-		}
-	}
-	if !hasArg(args, "--bind=start:pos(2)") {
-		t.Errorf("flag --bind ausente: %v", args)
+	got, _ := m.Update(msg)
+	if got != m {
+		t.Fatalf("Update devolveu outro modelo: %T", got)
 	}
 }
 
-func TestToggleWithOptionsBackAndInitialSelection(t *testing.T) {
-	argsFile := fakeFzfReply(t, "-2\tvoltar")
+func TestListNavigationAndBounds(t *testing.T) {
+	list := newListModel([]string{"a", "b", "c"}, "Lista", "ajuda", 0)
 
-	res, err := ToggleWithOptions(ToggleOptions{
-		Prompt:      "escolha: ",
-		FinishLabel: "Concluir",
-		Items:       []string{"a", "b", "c"},
-		Selected:    []int{1},
-		AllowBack:   true,
-		Header:      "Etapa 2/3 · Estudos",
+	list.updateNavigation(runeKey('j'))
+	if list.cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", list.cursor)
+	}
+	list.updateNavigation(typeKey(tea.KeyUp))
+	if list.cursor != 0 {
+		t.Fatalf("cursor = %d, want 0 depois de up", list.cursor)
+	}
+	list.updateNavigation(runeKey('k'))
+	if list.cursor != 0 {
+		t.Fatalf("cursor = %d, want 0 no início", list.cursor)
+	}
+	list.updateNavigation(runeKey('G'))
+	if list.cursor != 2 {
+		t.Fatalf("cursor = %d, want 2 no fim", list.cursor)
+	}
+	list.updateNavigation(runeKey('j'))
+	if list.cursor != 2 {
+		t.Fatalf("cursor = %d, want 2 (sem passar do fim)", list.cursor)
+	}
+	list.updateNavigation(runeKey('g'))
+	if list.cursor != 0 {
+		t.Fatalf("cursor = %d, want 0 no início", list.cursor)
+	}
+	if list.updateNavigation(runeKey('x')) {
+		t.Error("tecla de ação não deveria ser consumida pela navegação")
+	}
+}
+
+func TestListWindowKeepsCursorVisible(t *testing.T) {
+	items := make([]string, 30)
+	for i := range items {
+		items[i] = string(rune('a' + i%26))
+	}
+	list := newListModel(items, "Lista", "", 0)
+	list.setHeight(8) // 5 itens visíveis
+
+	list.updateNavigation(runeKey('G'))
+	start, end := list.window()
+	if list.cursor < start || list.cursor >= end {
+		t.Fatalf("cursor %d fora da janela %d-%d", list.cursor, start, end)
+	}
+	if end != len(items) {
+		t.Errorf("fim da janela = %d, want %d", end, len(items))
+	}
+
+	list.updateNavigation(runeKey('g'))
+	start, end = list.window()
+	if start != 0 {
+		t.Errorf("início da janela = %d, want 0", start)
+	}
+	if list.cursor < start || list.cursor >= end {
+		t.Fatalf("cursor %d fora da janela %d-%d", list.cursor, start, end)
+	}
+
+	list.updateNavigation(typeKey(tea.KeyCtrlD))
+	start, end = list.window()
+	if list.cursor < start || list.cursor >= end {
+		t.Fatalf("cursor %d fora da janela %d-%d depois de ctrl-d", list.cursor, start, end)
+	}
+}
+
+func TestToggleModelInitialSelectionAndLocked(t *testing.T) {
+	m := newToggleModel(ToggleOptions{
+		Header:   "Etapa 1/2 · Tasks",
+		Prompt:   "Etapa 1/2 · Tasks › ",
+		Items:    []string{"a", "b", "c"},
+		Selected: []int{1},
+		Locked:   []int{2},
 	})
-	if err != nil {
-		t.Fatalf("ToggleWithOptions: %v", err)
+
+	if !m.marked[1] || !m.marked[2] {
+		t.Fatalf("seleção inicial = %v, want b e c marcados", m.marked)
 	}
-	if res.Action != ToggleBack {
-		t.Fatalf("action = %v, want ToggleBack", res.Action)
+	if m.list.cursor != 1 {
+		t.Errorf("cursor = %d, want 1 (primeiro marcado)", m.list.cursor)
 	}
-	if len(res.Selected) != 1 || res.Selected[0] != 1 {
-		t.Fatalf("selected = %v, want [1]", res.Selected)
+	if !strings.Contains(m.View(), "[x] b") || !strings.Contains(m.View(), "[x] c") {
+		t.Errorf("view sem itens marcados:\n%s", m.View())
+	}
+	if !strings.Contains(m.View(), "2 marcados · 3 no total") {
+		t.Errorf("view sem contador:\n%s", m.View())
+	}
+}
+
+func TestToggleModelMarksAndIgnoresLocked(t *testing.T) {
+	m := newToggleModel(ToggleOptions{
+		Items:  []string{"a", "b", "c"},
+		Locked: []int{2},
+	})
+
+	m.list.cursor = 0
+	updateToggle(t, m, typeKey(tea.KeySpace))
+	if !m.marked[0] {
+		t.Fatal("espaço deveria marcar o item atual")
 	}
 
-	args := readFzfArgs(t, argsFile)
-	if !hasArg(args, "--bind=start:pos(4)") {
-		t.Errorf("posição inicial não considera as linhas de ação: %v", args)
+	m.list.cursor = 2
+	updateToggle(t, m, typeKey(tea.KeySpace))
+	if !m.marked[2] {
+		t.Error("item travado foi desmarcado")
 	}
-	for _, arg := range args {
-		if strings.Contains(arg, "h:pos(2)+accept") {
-			return
+
+	updateToggle(t, m, runeKey('j'))
+	if m.list.cursor != 2 {
+		t.Errorf("cursor = %d, want 2 (limite)", m.list.cursor)
+	}
+}
+
+func TestToggleModelFinishBackCancel(t *testing.T) {
+	tests := []struct {
+		name   string
+		key    tea.KeyMsg
+		back   bool
+		action ToggleAction
+	}{
+		{name: "conclui", key: runeKey('l'), action: ToggleFinish},
+		{name: "volta", key: runeKey('h'), back: true, action: ToggleBack},
+		{name: "cancela", key: runeKey('q'), action: ToggleCancel},
+		{name: "esc", key: typeKey(tea.KeyEsc), action: ToggleCancel},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newToggleModel(ToggleOptions{
+				Header:    "Etapa 1/2 · Tasks",
+				Items:     []string{"a", "b"},
+				Selected:  []int{0},
+				AllowBack: tt.back,
+			})
+			updateToggle(t, m, tt.key)
+			if m.result.Action != tt.action {
+				t.Fatalf("action = %v, want %v", m.result.Action, tt.action)
+			}
+			if !m.done {
+				t.Error("done = false")
+			}
+			if len(m.result.Selected) != 1 || m.result.Selected[0] != 0 {
+				t.Errorf("selected = %v, want [0]", m.result.Selected)
+			}
+		})
+	}
+}
+
+func TestToggleModelBackIgnoredOnFirstStage(t *testing.T) {
+	m := newToggleModel(ToggleOptions{
+		Items: []string{"a", "b"},
+	})
+	updateToggle(t, m, runeKey('h'))
+	if m.done || m.result.Action != ToggleFinish {
+		t.Fatal("h sem AllowBack deveria ser ignorado")
+	}
+}
+
+func TestToggleModelSummaryIsCompact(t *testing.T) {
+	m := newToggleModel(ToggleOptions{
+		Header:   "Etapa 1/2 · Tasks",
+		Items:    []string{"a", "b", "c"},
+		Selected: []int{0, 2},
+	})
+	updateToggle(t, m, runeKey('l'))
+
+	view := m.View()
+	if !strings.Contains(view, "✓ Etapa 1/2 · Tasks — 2 selecionados") {
+		t.Errorf("resumo = %q", view)
+	}
+	for _, marker := range []string{"▶", "[x]", "[ ]"} {
+		if strings.Contains(view, marker) {
+			t.Errorf("resumo ainda mostra a lista (%q): %q", marker, view)
 		}
 	}
-	t.Errorf("bind de voltar ausente: %v", args)
 }
 
-func TestConfirmUsesSafeDefault(t *testing.T) {
-	fakeFzfReply(t, "Não, continuar")
+func TestPickModelNavigationAndChoose(t *testing.T) {
+	m := newPickModel("Duração: ", []string{"10 min", "20 min", "30 min"})
 
-	ok, err := Confirm("Descartar tudo? ")
-	if err != nil {
-		t.Fatal(err)
+	m.Update(runeKey('j'))
+	m.Update(runeKey('j'))
+	if m.list.cursor != 2 {
+		t.Fatalf("cursor = %d, want 2", m.list.cursor)
 	}
-	if ok {
-		t.Error("Confirm = true, want false")
+	m.Update(runeKey('k'))
+	_, cmd := m.Update(typeKey(tea.KeyEnter))
+	if m.choice != "20 min" {
+		t.Errorf("choice = %q, want 20 min", m.choice)
 	}
-}
-
-func TestConfirmCanDiscard(t *testing.T) {
-	fakeFzfReply(t, "Sim, descartar")
-
-	ok, err := Confirm("Descartar tudo? ")
-	if err != nil {
-		t.Fatal(err)
+	if cmd == nil {
+		t.Error("enter deveria encerrar o programa")
 	}
-	if !ok {
-		t.Error("Confirm = false, want true")
+	if !strings.Contains(m.View(), "✓ Duração: — 20 min") {
+		t.Errorf("resumo = %q", m.View())
 	}
 }
 
-func TestFzfIgnoreArgKeepsVimKeys(t *testing.T) {
-	arg := fzfIgnoreArg('j', 'k', 'g', 'G', 'h', 'l', 'q')
-	if !strings.Contains(arg, "a:ignore") {
-		t.Errorf("tecla imprimível não foi neutralizada: %s", arg)
+func TestPickModelCancel(t *testing.T) {
+	m := newPickModel("Duração: ", []string{"10 min"})
+	m.Update(typeKey(tea.KeyEsc))
+	if m.choice != "" {
+		t.Errorf("choice = %q, want vazio", m.choice)
 	}
-	for _, used := range []string{"j:ignore", "k:ignore", "g:ignore", "G:ignore", "h:ignore", "l:ignore", "q:ignore"} {
-		if strings.Contains(arg, used) {
-			t.Errorf("atalho %q não deveria ser ignorado: %s", used, arg)
-		}
-	}
-}
-
-func TestPickFzfUsageError(t *testing.T) {
-	fakeFzf(t, 2)
-
-	if _, err := Pick("escolha: ", []string{"a", "b"}); err == nil {
-		t.Fatal("Pick deveria propagar o erro de uso do fzf")
+	if !strings.Contains(m.View(), "cancelado") {
+		t.Errorf("resumo = %q", m.View())
 	}
 }
 
-func TestToggleFzfUsageError(t *testing.T) {
-	fakeFzf(t, 2)
+func TestInputModelAcceptsValue(t *testing.T) {
+	m := newInputModel("Duração personalizada (min): ")
+	m.Update(runeKey('4'))
+	m.Update(runeKey('5'))
+	_, cmd := m.Update(typeKey(tea.KeyEnter))
 
-	_, err := Toggle("escolha: ", "Concluir", []string{"a", "b"})
-	if err == nil {
-		t.Fatal("Toggle deveria propagar o erro de uso do fzf")
+	if m.value != "45" {
+		t.Errorf("value = %q, want 45", m.value)
 	}
-	if errors.Is(err, ErrCanceled) {
-		t.Fatalf("erro de uso não pode virar ErrCanceled: %v", err)
+	if m.canceled {
+		t.Error("canceled = true")
+	}
+	if cmd == nil {
+		t.Error("enter deveria encerrar o programa")
+	}
+}
+
+func TestInputModelCancel(t *testing.T) {
+	m := newInputModel("Duração: ")
+	m.Update(typeKey(tea.KeyEsc))
+	if !m.canceled {
+		t.Error("canceled = false")
+	}
+	if !strings.Contains(m.View(), "cancelado") {
+		t.Errorf("resumo = %q", m.View())
+	}
+}
+
+func TestConfirmModelSafeDefault(t *testing.T) {
+	tests := []struct {
+		name string
+		key  tea.KeyMsg
+		yes  bool
+	}{
+		{name: "sim", key: runeKey('s'), yes: true},
+		{name: "não", key: runeKey('n'), yes: false},
+		{name: "esc", key: typeKey(tea.KeyEsc), yes: false},
+		{name: "enter", key: typeKey(tea.KeyEnter), yes: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newConfirmModel("Descartar tudo? ")
+			m.Update(tt.key)
+			if m.yes != tt.yes {
+				t.Errorf("yes = %v, want %v", m.yes, tt.yes)
+			}
+			if !m.done {
+				t.Error("done = false")
+			}
+		})
 	}
 }

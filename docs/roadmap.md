@@ -15,13 +15,16 @@
 > Atualizado em 2026-11-05: TUI entregue com `internal/tui`, backend falso nos testes,
 > timer, Extra, motivação, weeklist `#always`, ajuda, confirmações e undo; prévia
 > da daylist e fechamento do dia concluídos no mesmo dia.
+> Atualizado em 2026-11-06: ciclo do wizard em Bubble Tea entregue (`B1–B12`);
+> UI nativa inline com tema compartilhado em `internal/theme`, fzf removido e
+> fallback numerado mantido para execuções sem TTY.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
 
 ## Estado atual
 
-O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim (sem busca). O TUI em Bubble Tea cobre a daylist de hoje, timer, Extra, motivação, weeklist, undo, prévia da daylist e fechamento do dia, com backend falso nos testes. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
+O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim. O TUI em Bubble Tea cobre a daylist de hoje, timer, Extra, motivação, weeklist, undo, prévia da daylist e fechamento do dia, com backend falso nos testes. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O wizard usa a mesma UI nativa em Bubble Tea/Lipgloss, desenha em `stderr`, deixa resumos compactos no histórico e mantém fallback numerado sem TTY. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
 
 | Comando | Estado |
 |---|---|
@@ -43,17 +46,18 @@ internal/week/        semanas ISO, parser de hábitos, weeklist e feedback
 internal/timer/       estado do timer + marcação ⏱ na daylist
 internal/wizard/      fluxo por etapas, voltar, resolução de tempo/prioridade e total
 internal/planner/     monta a daylist em memória para prévia e grava sob confirmação
-internal/ui/          Pick (fzf/menu) + Toggle (wizard) + Input + Confirm
+internal/ui/          Pick + Toggle + Input + Confirm em Bubble Tea + fallback numerado
 internal/tui/         modelo Bubble Tea, backend real/falso, formulários e telas
+internal/theme/       estilos compartilhados entre TUI e wizard
 internal/vault/       caminhos e URL do Obsidian
 ```
 
-## 🖥️ Próximo ciclo — TUI e metadados
+## ✅ Ciclo entregue — TUI e metadados
 
 As tarefas detalhadas estão em [docs/backlog.md](backlog.md).
 
-Status em 2026-11-05: `T1–T16` e `DOC1` concluídos. A TUI cobre o ciclo diário
-com prévia antes da criação e fechamento do dia somente leitura.
+Status em 2026-11-06: `T1–T17` e `DOC1–DOC3` concluídos. A TUI cobre o ciclo
+diário com prévia antes da criação e fechamento do dia somente leitura.
 
 - `daylist` sem argumentos abre o TUI; `daylist open` mantém a abertura no
   Obsidian.
@@ -75,6 +79,28 @@ com prévia antes da criação e fechamento do dia somente leitura.
 - Hábito Extra é escolhido entre os hábitos da weeklist e inserido na categoria
   original de `# Hábitos`, para entrar no feedback normalmente.
 - Task Extra continua indo para `# Extra`.
+
+## ✅ Ciclo entregue — Wizard em Bubble Tea
+
+O wizard (`daylist new`, `daylist open`, `n`/`N` do TUI e `timer start`) usava
+fzf. O visual não acompanhava o TUI e o fzf era reaberto a cada marcação, o que
+causava piscadas. O ciclo moveu essas interações para Bubble Tea/Lipgloss,
+reaproveitando o tema do TUI, e aposentou o fzf.
+
+Status em 2026-11-06: `B1–B12` concluídos e validados em terminal real
+(`script`/pty) para `daylist new`, `timer start`, `n` no TUI, `--dry-run` com
+stdout redirecionado, `Ctrl+C` e execução sem TTY.
+
+- UI nativa com o mesmo vocabulário do TUI: `j/k`, `g/G`, `Ctrl-d/Ctrl-u`,
+  `Enter/Espaço`, `h/l/q`, cabeçalho de etapa e ajuda no rodapé.
+- Tema compartilhado em `internal/theme`; o TUI passou a consumir o mesmo tema.
+- `Toggle`, `Pick`, `Input` e `Confirm` implementados em Bubble Tea dentro de
+  `internal/ui`, desenhando em `stderr` e com resumo compacto ao final.
+- Fallback numerado mantido para quando não houver TTY; o fzf deixou de ser
+  requisito e suas funções/testes foram removidos.
+- O TUI continua reutilizando o wizard via `tea.Exec`; unificar tudo em uma
+  única tela fica para um ciclo posterior.
+- Tarefas detalhadas: `B1–B12` em [docs/backlog.md](backlog.md).
 
 ## 🌿 Fluxo de trabalho
 
@@ -112,10 +138,10 @@ As correções 1–6 do roadmap foram implementadas e cobertas por testes:
 
 - Linux-only por decisão; suporte a macOS/WSL fica fora do escopo.
 - Autodetecção do vault continua adiada em `docs/backlog.md`.
-- O próximo ciclo é o TUI com `#always` para hábitos, motivações e Extra; o
-  wizard não terá uma etapa Extra separada.
-- A TUI também terá prévia da daylist, undo, fechamento do dia e motivação no
-  momento do foco.
+- O wizard usa a UI nativa em Bubble Tea com fallback numerado sem TTY; o TUI
+  já está entregue.
+- O wizard não terá uma etapa Extra separada; a inclusão de Extra é feita pelo
+  TUI.
 - O timer sinaliza mínimo e máximo do tempo planejado, sem parar automaticamente.
 
 ---
@@ -131,20 +157,24 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 
 ---
 
-## ✅ UX do wizard (2026-10-30)
+## ✅ UX do wizard (2026-10-30, UI nativa em 2026-11-06)
 
-- **Navegação Vim padrão** no fzf: `j`/`k`, `g`/`G`, `Ctrl-d`/`Ctrl-u`, `Enter`/`Espaço`, `h` para voltar, `l` para concluir e `q`/`Esc` para cancelar.
-- **Sem busca digitável** no fzf: `--disabled` e teclas imprimíveis neutralizadas; a lista é navegada apenas por movimento e marcação.
-- **“↩ Voltar etapa”**: `h` ou a linha de voltar reabre a etapa anterior preservando seleções, tempos e prioridades.
+- **Navegação Vim padrão**: `j`/`k` (ou `↑`/`↓`), `g`/`G`, `Ctrl-d`/`Ctrl-u`, `Enter`/`Espaço`, `h` para voltar, `l` para concluir e `q`/`Esc` para cancelar.
+- **UI sem busca digitável**: o wizard nativo ignora teclas imprimíveis que não sejam atalhos; a lista é navegada apenas por movimento e marcação.
+- **Voltar etapa**: `h` reabre a etapa anterior preservando seleções, tempos e prioridades. Concluir e voltar são apenas atalhos: a lista não tem linhas de ação.
 - **Header com contagem**: `Etapa 2/9 · Estudos · 3 marcados · 5 no total`.
 - **Esc/q com itens marcados**: confirma “descartar tudo?” antes de perder as escolhas.
 - **Tempo total planejado**: exibido ao final como valor único ou faixa (`1h45–1h55`); sem limite e sem alerta.
-- **Duração personalizada**: continua aceitando número via `Input`.
+- **Duração personalizada**: continua aceitando número via `Input` com `bubbles/textinput`.
 - **Hábitos “sempre”**: hábitos com `#always` entram automaticamente em toda
   daylist da semana, desmarcados, sem seleção manual e sem opção de remover no
   wizard. Tasks não usam `#always`.
 - **Etapa “Extra”**: não será uma etapa do wizard; a inclusão de Extra será uma
   ação do TUI.
+
+> O fzf foi substituído pela UI nativa em Bubble Tea em 2026-11-06. As teclas e
+> o fluxo por etapas permanecem os mesmos; sem TTY, o menu numerado continua
+> disponível.
 
 ---
 
@@ -159,13 +189,14 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 ## 🧱 Engenharia
 
 - ✅ `cmd/new.go` foi reduzido; o wizard agora vive em `internal/wizard`, com `Prompter` injetado, e é testável sem TTY.
-- Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos), fluxos de `timer stop` e weeklist alvo em `cmd`, e flags/erros do fzf em `ui`.
+- Cobertura adicionada em 2026-10-29: `timer.Finish` (linha editada, CRLF, arredondamento, já registrado), `vault` (validação, semana ISO, caminhos), fluxos de `timer stop` e weeklist alvo em `cmd`, e menus numerados do `ui`.
 - Cobertura adicionada em 2026-10-30: `internal/week` (semanas ISO, parser tolerante, weeklist e feedback), comandos `week`/`feedback` (flags, dry-run, print-path, alvos legados), navegação/voltar/cancelar em `ui` e fluxo do wizard em `internal/wizard`.
 - Cobertura adicionada em 2026-11-02: `cmd/new` (data alvo, padrão Hoje/Amanhã, cancelamento, erro do picker e flags).
 - Cobertura adicionada em 2026-11-02: `internal/version` (formato) e `cmd` (comando `version`, `--version` e ausência de vault).
 - Cobertura adicionada em 2026-11-04: limites mínimo/máximo do timer (parser, estado antigo, status/prompt e notificação única).
 - Cobertura adicionada em 2026-11-05: modelo editável da daylist (`#always`, motivação e Extra) e TUI com backend falso (navegação, toggle, undo, timer, formulários, weeklist, ajuda e confirmações).
 - Cobertura adicionada em 2026-11-05: `internal/planner` (prévia, limite de 8h, cancelamento, nenhum item e gravação) e resumo/fechamento do dia (`daylist.Summarize` e TUI).
+- Cobertura adicionada em 2026-11-06: modelos Bubble Tea do wizard (lista, janela, navegação, seleção inicial, itens travados, voltar/concluir/cancelar, pick, confirm e input) e remoção dos testes de fzf (`B10`).
 - ✅ `Makefile`: `build`, `install`, `test`, `test-race`, `vet`, `fmt`, `fmt-check`, `lint`, `cover`, `ci` e `clean`; usa `go test -race -cover ./...` e embute versão/commit/data no build.
 - ✅ `README.md`: instalação, configuração do vault, comandos, teclas do wizard, formato dos arquivos, desenvolvimento e limitações.
 - ✅ CI no GitHub Actions: workflow `.github/workflows/ci.yml` roda `make ci` em push/PR; primeiro run verde em 2026-10-30.
@@ -188,7 +219,8 @@ o roadmap focado no escopo atual.
 3. ✅ **Médio**: portar `week`/`feedback` para Go — concluído em 2026-10-30.
 4. ✅ **Médio**: wizard com Vim, voltar etapa, confirmação no Esc e tempo total — concluído em 2026-10-30. A inclusão de Extra será feita pelo TUI, não pelo wizard.
 5. **Contínuo**: ✅ README/Makefile, CI, testes de `cmd` e versionamento do binário.
-6. ✅ **Próximo ciclo**: TUI entregue com prévia da daylist e fechamento do dia — tarefas em [docs/backlog.md](backlog.md).
+6. ✅ **Ciclo anterior**: TUI entregue com prévia da daylist e fechamento do dia — tarefas em [docs/backlog.md](backlog.md).
+7. ✅ **Médio**: migrar o wizard para Bubble Tea e aposentar o fzf — tarefas `B1–B12` em [docs/backlog.md](backlog.md).
 
 ---
 
