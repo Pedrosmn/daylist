@@ -10,8 +10,9 @@ terminal, criar a daylist do dia e registrar o tempo com o timer.
 
 - Go 1.23.2 ou superior (versão declarada no `go.mod`).
 - Obsidian instalado para abrir as notas pelo comando `daylist open`.
-- `fzf` opcional. Sem ele, o CLI usa menus numerados e os mesmos comandos de
-  etapa (`h`, `l`, `q`). O wizard é usado pelo TUI para criar a daylist.
+- Sem dependência de `fzf`: o wizard usa uma UI nativa em Bubble Tea quando
+  `stdin` e `stderr` são um terminal. Sem TTY, cai em menus numerados com os
+  mesmos comandos de etapa (`h`, `l`, `q`).
 - `notify-send` (libnotify) opcional, para notificações do timer no Linux.
 - Linux para abertura automática da nota, pois o comando usa `xdg-open`.
 
@@ -191,13 +192,16 @@ Gera scripts de completion do Cobra para o shell atual.
 
 ## Wizard
 
-As etapas usam navegação no estilo Vim. O fzf fica sem busca digitável nesta
-versão: a lista é percorrida apenas com movimento e marcação.
+As etapas usam navegação no estilo Vim em uma UI Bubble Tea/Lipgloss nativa,
+com o mesmo tema do TUI. A interface é inline (sem alt-screen), desenha em
+`stderr` e deixa `stdout` limpo para `--dry-run` e redirecionamentos. Ao
+concluir ou cancelar uma etapa, a lista é substituída por um resumo compacto,
+como `✓ Etapa 1/3 · # Tasks — 2 selecionados`, para não inflar o scrollback.
 
 | Tecla | Ação |
 |---|---|
-| `j` / `k` | desce / sobe |
-| `g` / `G` | vai ao início / fim |
+| `j` / `k`, `↑` / `↓` | desce / sobe |
+| `g` / `G`, `home` / `end` | vai ao início / fim |
 | `Ctrl-d` / `Ctrl-u` | meia página para baixo / cima |
 | `Enter` / `Espaço` | marca / desmarca o item destacado |
 | `h` | volta para a etapa anterior |
@@ -205,8 +209,13 @@ versão: a lista é percorrida apenas com movimento e marcação.
 | `q` / `Esc` | cancela tudo, com confirmação se houver seleção |
 
 Ao voltar uma etapa, seleções, tempos e prioridades já definidos são
-preservados. A duração personalizada é digitada fora do fzf, quando você escolhe
-`Personalizado`.
+preservados. A duração personalizada é digitada em um prompt de texto, quando
+você escolhe `Personalizado`. Confirmações usam `s` para sim e `n`/`Esc` para
+não, com a opção segura (“Não, continuar”) como padrão.
+
+Sem TTY (testes, pipes e CI), o wizard mantém o menu numerado. Nele, digite o
+número para marcar/desmarcar, `l` ou `Enter` para concluir, `h` para voltar e
+`q` para cancelar.
 
 Hábitos com `#always` aparecem com o sufixo `(sempre)`, já entram marcados em
 toda daylist da semana e não podem ser desmarcados.
@@ -323,7 +332,8 @@ internal/week/        semanas ISO, weeklist e feedback
 internal/timer/       estado do timer e marcação ⏱
 internal/wizard/      fluxo por etapas, voltar e tempo total
 internal/planner/     monta a daylist em memória para prévia e grava sob confirmação
-internal/ui/          Pick, Toggle, Input e Confirm
+internal/ui/          UI nativa Bubble Tea (Pick, Toggle, Input, Confirm) + fallback numerado
+internal/theme/       estilos compartilhados entre TUI e wizard
 internal/tui/         modelo Bubble Tea, backend, formulários e telas
 internal/vault/       caminhos, validação e abertura do Obsidian
 docs/                 roadmap e documentação

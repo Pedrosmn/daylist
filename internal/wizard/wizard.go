@@ -209,9 +209,13 @@ func resolveTime(p Prompter, out io.Writer, it daylist.Item) (string, bool, erro
 
 	for {
 		value, err := p.Input("Duração personalizada (min): ")
+		if errors.Is(err, ui.ErrCanceled) {
+			return "", false, nil
+		}
 		if err != nil {
 			return "", false, err
 		}
+		value = strings.TrimSpace(value)
 		mins, convErr := strconv.Atoi(value)
 		if convErr == nil && mins > 0 {
 			return fmt.Sprintf("%d min", mins), true, nil
