@@ -63,6 +63,14 @@ export DAYLIST_VAULT_NAME="Seu Vault"
 Adicione esses `export` ao `~/.zshrc`, `~/.bashrc` ou equivalente para manter a
 configuração entre sessões.
 
+O limite diário usado na prévia da daylist pode ser ajustado com:
+
+```sh
+export DAYLIST_DAY_LIMIT="8h"   # padrão; aceita "7h30", "480 min" etc.
+```
+
+O limite só gera um alerta visual na prévia; não bloqueia a criação da daylist.
+
 A estrutura esperada dentro do vault é:
 
 ```text
@@ -229,19 +237,29 @@ concluídos, motivações e o status do timer.
 | `A` | adicionar hábito Extra escolhido da weeklist |
 | `W` | ver a weeklist atual e alternar `#always` em hábitos |
 | `u` | desfazer a última edição da daylist |
-| `n` | criar a daylist de hoje pelo wizard |
+| `n` | criar a daylist de hoje pelo wizard, com prévia antes de gravar |
 | `c` | criar a weeklist atual, se estiver faltando |
+| `F` | fechar o dia com resumo de planejado vs. real |
 | `o` | abrir a daylist de hoje no Obsidian |
 | `r` | recarregar a daylist do disco |
 | `?` | tela de ajuda |
 | `q` / `Ctrl+C` | sair |
 
-A criação da daylist suspende o TUI e executa o wizard normal no terminal. O
-hábito Extra é escolhido entre os hábitos pendentes da weeklist e entra na
+A criação da daylist suspende o TUI e executa o wizard normal no terminal.
+Antes de gravar, o TUI mostra uma prévia com os hábitos `#always` que entrarão
+automaticamente, o tempo planejado e um alerta quando o dia passa do limite
+configurado em `DAYLIST_DAY_LIMIT` (padrão de 8h). `Enter`/`s` grava e `Esc`
+cancela sem criar a nota.
+
+O hábito Extra é escolhido entre os hábitos pendentes da weeklist e entra na
 categoria original de `# Hábitos`, contando no feedback. A task Extra vai para
 `# Extra`. A motivação aparece abaixo do item e também é mostrada ao iniciar o
 timer. O aviso de tempo mínimo/máximo do timer usa as mesmas regras e mensagens
 do CLI.
+
+`F` abre o resumo de fechamento do dia com tempo planejado, tempo real já
+registrado, concluídos e pendentes. Fechar o dia apenas mostra o resumo: nada é
+alterado na nota e nenhum pendente é copiado para amanhã.
 
 O `#always` é exclusivo de hábitos: na tela da weeklist, `Espaço` alterna o
 marcador apenas quando o item está em `# Hábitos`.
@@ -302,6 +320,7 @@ internal/daylist/     parser, stages e renderização da daylist
 internal/week/        semanas ISO, weeklist e feedback
 internal/timer/       estado do timer e marcação ⏱
 internal/wizard/      fluxo por etapas, voltar e tempo total
+internal/planner/     monta a daylist em memória para prévia e grava sob confirmação
 internal/ui/          Pick, Toggle, Input e Confirm
 internal/tui/         modelo Bubble Tea, backend, formulários e telas
 internal/vault/       caminhos, validação e abertura do Obsidian
@@ -318,5 +337,5 @@ referência histórica do fluxo antigo e não fazem parte da geração atual.
 - O vault ainda não é autodetectado: use `DAYLIST_VAULT_PATH` e
   `DAYLIST_VAULT_NAME`.
 - A etapa `Extra` continua fora do wizard; a inclusão de Extra é feita pelo TUI.
-- A prévia da daylist antes da criação e a ação “Fechar o dia” ainda estão no
-  backlog.
+- A ação “Fechar o dia” é somente um resumo: ainda não copia pendentes nem
+  reorganiza o dia seguinte.

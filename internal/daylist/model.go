@@ -65,6 +65,36 @@ type Note struct {
 	sections []NoteSection
 }
 
+// Summary resume o dia para a tela de fechamento: tempo planejado (faixa),
+// tempo real já registrado no sufixo ⏱ e contagem por estado.
+type Summary struct {
+	PlannedMin int
+	PlannedMax int
+	HasPlanned bool
+	ActualMin  int
+	Done       int
+	Pending    int
+}
+
+// Summarize calcula o resumo dos itens de uma daylist.
+func Summarize(items []NoteItem) Summary {
+	var summary Summary
+	for _, item := range items {
+		if item.Checked {
+			summary.Done++
+		} else {
+			summary.Pending++
+		}
+		if min, max, ok := ParseTimeRange(item.Time); ok {
+			summary.PlannedMin += min
+			summary.PlannedMax += max
+			summary.HasPlanned = true
+		}
+		summary.ActualMin += item.TimerMinutes
+	}
+	return summary
+}
+
 // ExtraTask descreve uma task livre para a seção # Extra.
 type ExtraTask struct {
 	Time       string

@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"daylist/internal/planner"
 	"daylist/internal/tui"
 	"daylist/internal/vault"
 )
@@ -14,8 +16,12 @@ import (
 // Bubble Tea.
 func runTUI(v *vault.Vault) error {
 	backend := tui.NewRealBackend(v)
-	backend.CreateDaylistFn = func() error {
-		return createDaylist(v, time.Now(), false)
+	backend.PlanDaylistFn = func() (*planner.Plan, error) {
+		now := time.Now()
+		return planner.Build(v, now, uiPrompter{}, os.Stdout, now)
+	}
+	backend.WriteDaylistFn = func(plan *planner.Plan) error {
+		return planner.Write(v, plan)
 	}
 	backend.CreateWeeklistFn = func() error {
 		return runWeek(v, weekOptions{Current: true}, time.Now())

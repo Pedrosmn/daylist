@@ -455,3 +455,39 @@ func TestToggleAlwaysCRLF(t *testing.T) {
 		t.Errorf("CRLF não preservado: %q", note.String())
 	}
 }
+
+func TestSummarize(t *testing.T) {
+	note := ParseNote(`# Tasks
+- [x] 30 min (I) - feita ⏱ 25min (09:00–09:25)
+- [ ] 20 min (U) - pendente
+- [ ] 5/15 min () - faixa
+# Hábitos
+## Rotina
+- [ ] 5 min () - água
+- [x] xST () - sem tempo
+`)
+
+	summary := Summarize(note.Items())
+	if !summary.HasPlanned {
+		t.Fatal("deveria ter tempo planejado")
+	}
+	if summary.PlannedMin != 60 || summary.PlannedMax != 70 {
+		t.Errorf("planejado = %d–%d, want 60–70", summary.PlannedMin, summary.PlannedMax)
+	}
+	if summary.ActualMin != 25 {
+		t.Errorf("real = %d, want 25", summary.ActualMin)
+	}
+	if summary.Done != 2 || summary.Pending != 3 {
+		t.Errorf("concluídos/pendentes = %d/%d, want 2/3", summary.Done, summary.Pending)
+	}
+}
+
+func TestSummarizeWithoutPlannedTime(t *testing.T) {
+	summary := Summarize(ParseNote("# Tasks\n- [ ] xST () - estudar\n").Items())
+	if summary.HasPlanned {
+		t.Error("xST não deveria contar como tempo planejado")
+	}
+	if summary.PlannedMin != 0 || summary.PlannedMax != 0 {
+		t.Errorf("planejado = %d–%d, want 0–0", summary.PlannedMin, summary.PlannedMax)
+	}
+}

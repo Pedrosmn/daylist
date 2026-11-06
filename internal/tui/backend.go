@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"daylist/internal/daylist"
+	"daylist/internal/planner"
 	"daylist/internal/timer"
 	"daylist/internal/vault"
 )
@@ -28,7 +29,9 @@ type Backend interface {
 	SaveWeeklist(*daylist.Note) error
 	WeeklistHabits() ([]daylist.Item, error)
 
-	CreateDaylist() error
+	// PlanDaylist executa o wizard e devolve a prévia, sem gravar.
+	PlanDaylist() (*planner.Plan, error)
+	WriteDaylist(*planner.Plan) error
 	CreateWeeklist() error
 	OpenDaylist() error
 
@@ -46,7 +49,8 @@ type RealBackend struct {
 	Vault *vault.Vault
 	Now   func() time.Time
 
-	CreateDaylistFn  func() error
+	PlanDaylistFn    func() (*planner.Plan, error)
+	WriteDaylistFn   func(*planner.Plan) error
 	CreateWeeklistFn func() error
 	NotifyFn         func(title, body string) error
 }
@@ -107,11 +111,18 @@ func (b *RealBackend) WeeklistHabits() ([]daylist.Item, error) {
 	return habits, nil
 }
 
-func (b *RealBackend) CreateDaylist() error {
-	if b.CreateDaylistFn == nil {
-		return errors.New("criação da daylist não configurada")
+func (b *RealBackend) PlanDaylist() (*planner.Plan, error) {
+	if b.PlanDaylistFn == nil {
+		return nil, errors.New("planejamento da daylist não configurado")
 	}
-	return b.CreateDaylistFn()
+	return b.PlanDaylistFn()
+}
+
+func (b *RealBackend) WriteDaylist(plan *planner.Plan) error {
+	if b.WriteDaylistFn == nil {
+		return errors.New("gravação da daylist não configurada")
+	}
+	return b.WriteDaylistFn(plan)
 }
 
 func (b *RealBackend) CreateWeeklist() error {

@@ -68,20 +68,20 @@ Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
   hábitos.
 - [x] T11. Tela de ajuda, mensagens de erro e confirmações.
 - [x] T12. Cobrir o modelo TUI com backend falso.
-- [ ] T13. Mostrar uma prévia antes de criar a daylist:
+- [x] T13. Mostrar uma prévia antes de criar a daylist:
   - hábitos `#always` que já entrarão automaticamente;
   - total de tempo planejado;
   - alerta quando o dia já nascer acima de um limite configurável.
 - [x] T14. Adicionar undo no TUI para desfazer a última ação de edição.
-- [ ] T15. Adicionar ação “Fechar o dia” com resumo de planejado vs. real,
-  concluídos, pendentes e opção de trazer pendentes para amanhã.
+- [x] T15. Adicionar ação “Fechar o dia” com resumo de planejado vs. real,
+  concluídos e pendentes. O fechamento é somente leitura: não copia pendentes
+  nem altera a nota.
 - [x] T16. Mostrar a motivação do item ao destacá-lo e ao iniciar o timer.
 
 ### 4. Documentação e validação
 
-- [ ] DOC1. Atualizar o README com TUI, `open`, `#always`, motivação, Extra,
-  prévia da daylist, undo e fechamento do dia. (README atualizado para o que já
-  foi entregue; faltam as seções de prévia e fechamento do dia.)
+- [x] DOC1. Atualizar o README com TUI, `open`, `#always`, motivação, Extra,
+  prévia da daylist, undo e fechamento do dia.
 - [x] DOC2. Atualizar o roadmap com o próximo ciclo.
 - [x] DOC3. Rodar `make ci` e testar o TUI manualmente em terminal real.
 

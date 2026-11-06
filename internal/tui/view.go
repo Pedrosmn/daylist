@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"daylist/internal/daylist"
+	"daylist/internal/planner"
 	"daylist/internal/timer"
 )
 
@@ -27,6 +28,10 @@ func (m Model) View() string {
 		return m.weeklistView()
 	case modeConfirm:
 		return m.confirmView()
+	case modePreview:
+		return m.previewView()
+	case modeClose:
+		return m.closeView()
 	default:
 		return m.mainView()
 	}
@@ -63,7 +68,9 @@ func (m Model) mainView() string {
 	b.WriteString(m.messageView())
 	b.WriteString(styleHelp.Render("? ajuda · j/k mover · espaço marcar · s timer · p pausar · x parar"))
 	b.WriteString("\n")
-	b.WriteString(styleHelp.Render("e motivação · a Extra task · A Extra hábito · W weeklist · n nova · c weeklist · o abrir · q sair"))
+	b.WriteString(styleHelp.Render("e motivação · a Extra task · A Extra hábito · W weeklist · F fechar o dia"))
+	b.WriteString("\n")
+	b.WriteString(styleHelp.Render("n nova daylist · c weeklist · o abrir · q sair"))
 	return b.String()
 }
 
@@ -81,9 +88,10 @@ func (m Model) helpView() string {
 
 	b.WriteString(styleHeading.Render("Daylist e semana"))
 	b.WriteString("\n")
-	b.WriteString("  n  criar a daylist de hoje pelo wizard\n")
+	b.WriteString("  n  criar a daylist de hoje pelo wizard, com prévia antes de gravar\n")
 	b.WriteString("  c  criar a weeklist atual, se estiver faltando\n")
 	b.WriteString("  W  ver a weeklist atual; espaço alterna #always em hábitos\n")
+	b.WriteString("  F  fechar o dia com resumo de planejado vs. real\n")
 	b.WriteString("  o  abrir a daylist de hoje no Obsidian\n")
 	b.WriteString("  u  desfazer a última edição da daylist\n\n")
 
@@ -157,6 +165,100 @@ func (m Model) confirmView() string {
 	b.WriteString("\n")
 	b.WriteString("n/esc    não\n")
 	return styleForm.Render(b.String())
+}
+
+func (m Model) previewView() string {
+	plan := m.preview
+	if plan == nil {
+		return m.mainView()
+	}
+
+	var b strings.Builder
+	b.WriteString(styleTitle.Render("Prévia da daylist"))
+	b.WriteString("  ")
+	b.WriteString(styleSubtle.Render(plan.Target.Format("2006-01-02") + " · " + plan.Week))
+	b.WriteString("\n\n")
+
+	if plan.Fallback {
+		b.WriteString(styleSubtle.Render("Usando a weeklist da semana anterior."))
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString(styleHeading.Render("Hábitos #always"))
+	b.WriteString("\n")
+	if len(plan.Always) == 0 {
+		b.WriteString("  nenhum\n")
+	} else {
+		for _, item := range plan.Always {
+			b.WriteString("  - ")
+			b.WriteString(resolvedText(item))
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "Tempo planejado: %s\n", plan.TotalText())
+	if plan.OverLimit() {
+		b.WriteString(styleError.Render(fmt.Sprintf(
+			"⚠ Dia acima do limite: %s planejadas (limite %s)",
+			plan.TotalText(), planner.FormatMinutes(plan.LimitMin),
+		)))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.messageView())
+	b.WriteString(styleHelp.Render("enter/s cria a daylist · esc cancela sem gravar"))
+	return b.String()
+}
+
+func (m Model) closeView() string {
+	summary := m.summary
+
+	planned := "sem tempo planejado"
+	if summary.HasPlanned {
+		planned = planner.FormatRange(summary.PlannedMin, summary.PlannedMax)
+	}
+
+	var b strings.Builder
+	b.WriteString(styleTitle.Render("Fechar o dia"))
+	b.WriteString("  ")
+	b.WriteString(styleSubtle.Render(dateLabel(m.now)))
+	b.WriteString("\n\n")
+
+	b.WriteString(styleHeading.Render("Resumo"))
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "  Planejado:  %s\n", planned)
+	fmt.Fprintf(&b, "  Real:       %s\n", planner.FormatMinutes(summary.ActualMin))
+	fmt.Fprintf(&b, "  Concluídos: %d\n", summary.Done)
+	fmt.Fprintf(&b, "  Pendentes:  %d\n", summary.Pending)
+
+	if m.timer != nil {
+		b.WriteString("\n")
+		b.WriteString(styleTimer.Render("◷ " + timer.StatusText(m.timer)))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(styleSubtle.Render("Fechar o dia apenas mostra o resumo; nada é alterado ou copiado."))
+	b.WriteString("\n\n")
+	b.WriteString(styleHelp.Render("esc/enter volta"))
+	return b.String()
+}
+
+func resolvedText(item daylist.Resolved) string {
+	parts := make([]string, 0, 2)
+	if item.FinalTime != "" {
+		parts = append(parts, item.FinalTime)
+	}
+	if item.FinalFlag != "" {
+		parts = append(parts, "("+item.FinalFlag+")")
+	}
+	text := strings.Join(parts, " ")
+	if text != "" {
+		text += " - "
+	}
+	return text + item.Desc
 }
 
 func (m Model) habitPickerView() string {

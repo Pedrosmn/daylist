@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"daylist/internal/daylist"
+	"daylist/internal/planner"
 	"daylist/internal/timer"
 )
 
@@ -26,7 +27,11 @@ type fakeBackend struct {
 	finishErr error
 	cleared   int
 
-	created     int
+	plan        *planner.Plan
+	planErr     error
+	planned     int
+	written     int
+	writeErr    error
 	createdWeek int
 	opened      int
 	notified    []string
@@ -83,8 +88,21 @@ func (f *fakeBackend) SaveWeeklist(note *daylist.Note) error {
 
 func (f *fakeBackend) WeeklistHabits() ([]daylist.Item, error) { return f.habits, nil }
 
-func (f *fakeBackend) CreateDaylist() error {
-	f.created++
+func (f *fakeBackend) PlanDaylist() (*planner.Plan, error) {
+	f.planned++
+	if f.planErr != nil {
+		return nil, f.planErr
+	}
+	return f.plan, nil
+}
+
+func (f *fakeBackend) WriteDaylist(plan *planner.Plan) error {
+	if f.writeErr != nil {
+		return f.writeErr
+	}
+	f.written++
+	f.savedNote = plan.Content
+	f.noteContent = plan.Content
 	f.noteExists = true
 	return nil
 }
@@ -431,20 +449,148 @@ func TestAddExtraHabitFromWeeklist(t *testing.T) {
 	}
 }
 
-func TestCreateDaylistWhenMissing(t *testing.T) {
+func TestPreviewShowsAlwaysTotalAndCreates(t *testing.T) {
+	fake := newFake("")
+	fake.noteExists = false
+	plan := &planner.Plan{
+		Target: fake.now,
+		Week:   "2026-W45",
+		Always: []daylist.Resolved{{
+			Item:      daylist.Item{Section: "Hábitos", Desc: "Fio dental", Always: true},
+			FinalTime: "5 min",
+		}},
+		TotalMin: 125,
+		TotalMax: 125,
+		HasTotal: true,
+		LimitMin: 8 * 60,
+		Content:  "conteúdo novo\n",
+	}
+	fake.plan = plan
+	m := New(fake)
+	m.st = "Criando a daylist no wizard..."
+
+	m = updateModel(t, m, plannedMsg{plan: plan})
+	if m.mode != modePreview {
+		t.Fatalf("mode = %v, want preview", m.mode)
+	}
+	view := m.View()
+	for _, want := range []string{"Prévia da daylist", "Fio dental", "Tempo planejado: 2h05"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("prévia não contém %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "acima do limite") {
+		t.Errorf("prévia não deveria alertar abaixo do limite:\n%s", view)
+	}
+	if strings.Contains(view, "Criando a daylist no wizard") {
+		t.Errorf("prévia manteve o status da tela anterior:\n%s", view)
+	}
+
+	m = updateModel(t, m, keyType(tea.KeyEnter))
+	if fake.written != 1 || !fake.noteExists {
+		t.Fatalf("daylist não foi gravada: written=%d exists=%v", fake.written, fake.noteExists)
+	}
+	if m.mode != modeMain || !strings.Contains(m.st, "criada") {
+		t.Errorf("mode=%v status=%q", m.mode, m.st)
+	}
+}
+
+func TestPreviewWarnsAboveDayLimit(t *testing.T) {
+	fake := newFake("")
+	fake.noteExists = false
+	plan := &planner.Plan{
+		Target:   fake.now,
+		Week:     "2026-W45",
+		TotalMin: 8*60 + 30,
+		TotalMax: 9 * 60,
+		HasTotal: true,
+		LimitMin: 8 * 60,
+		Content:  "conteúdo\n",
+	}
+	m := New(fake)
+
+	m = updateModel(t, m, plannedMsg{plan: plan})
+	view := m.View()
+	if !strings.Contains(view, "acima do limite") || !strings.Contains(view, "limite 8h") {
+		t.Errorf("alerta de limite ausente:\n%s", view)
+	}
+}
+
+func TestPreviewCancelDoesNotWrite(t *testing.T) {
+	fake := newFake("")
+	fake.noteExists = false
+	plan := &planner.Plan{Target: fake.now, Content: "conteúdo\n"}
+	m := New(fake)
+
+	m = updateModel(t, m, plannedMsg{plan: plan})
+	m = updateModel(t, m, keyType(tea.KeyEsc))
+
+	if m.mode != modeMain || fake.written != 0 || fake.noteExists {
+		t.Errorf("cancelamento gravou algo: mode=%v written=%d exists=%v", m.mode, fake.written, fake.noteExists)
+	}
+}
+
+func TestPlannedCanceledShowsStatus(t *testing.T) {
+	fake := newFake("# Tasks\n")
+	m := New(fake)
+
+	m = updateModel(t, m, plannedMsg{err: planner.ErrCanceled})
+	if m.mode != modeMain || !strings.Contains(m.st, "cancelada") {
+		t.Errorf("mode=%v status=%q", m.mode, m.st)
+	}
+}
+
+func TestCreateDaylistAlreadyExists(t *testing.T) {
+	fake := newFake("# Tasks\n")
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("n"))
+	if !strings.Contains(m.st, "já existe") {
+		t.Errorf("status = %q", m.st)
+	}
+}
+
+func TestCloseDayShowsSummary(t *testing.T) {
+	fake := newFake(`# Tasks
+- [x] 30 min (I) - feita ⏱ 25min (09:00–09:25)
+- [ ] 20 min (U) - pendente
+# Hábitos
+## Rotina
+- [ ] 5 min () - água
+`)
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("F"))
+	if m.mode != modeClose {
+		t.Fatalf("mode = %v, want close", m.mode)
+	}
+	view := m.View()
+	for _, want := range []string{
+		"Fechar o dia", "Planejado:  55 min", "Real:       25 min",
+		"Concluídos: 1", "Pendentes:  2", "nada é alterado",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("resumo não contém %q:\n%s", want, view)
+		}
+	}
+
+	m = updateModel(t, m, keyType(tea.KeyEsc))
+	if m.mode != modeMain {
+		t.Errorf("mode = %v, want main", m.mode)
+	}
+}
+
+func TestCloseDayWithoutDaylistShowsError(t *testing.T) {
 	fake := newFake("")
 	fake.noteExists = false
 	m := New(fake)
 
-	m = updateModel(t, m, keyRunes("n"))
-	if m.st == "" {
-		t.Error("status de criação não foi definido")
+	m = updateModel(t, m, keyRunes("F"))
+	if !strings.Contains(m.err, "antes de fechar") {
+		t.Errorf("err = %q", m.err)
 	}
-
-	fake.noteExists = true
-	m = updateModel(t, m, keyRunes("n"))
-	if !strings.Contains(m.st, "já existe") {
-		t.Errorf("status = %q", m.st)
+	if m.mode != modeMain {
+		t.Errorf("mode = %v, want main", m.mode)
 	}
 }
 

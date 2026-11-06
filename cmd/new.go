@@ -9,10 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"daylist/internal/daylist"
+	"daylist/internal/planner"
 	"daylist/internal/ui"
 	"daylist/internal/vault"
-	"daylist/internal/wizard"
 )
 
 type newOptions struct {
@@ -105,28 +104,7 @@ func resolveTargetDate(
 	return tomorrow, nil
 }
 
-// weeklistForTarget devolve a weeklist da semana da data alvo; se não
-// existir, cai para a semana anterior.
-func weeklistForTarget(v *vault.Vault, target time.Time) (path, week string, fallback bool, err error) {
-	targetWeek := vault.ISOWeek(target)
-	targetPath := v.WeeklistFile(targetWeek)
-	if fileExists(targetPath) {
-		return targetPath, targetWeek, false, nil
-	}
-
-	previousWeek := vault.ISOWeek(target.AddDate(0, 0, -7))
-	previousPath := v.WeeklistFile(previousWeek)
-	if fileExists(previousPath) {
-		return previousPath, previousWeek, true, nil
-	}
-
-	return "", "", false, fmt.Errorf(
-		"weeklist não encontrada para %s (nem a da semana anterior, %s)\ncaminhos tentados:\n  - %s\n  - %s\nrode `daylist week` para criar a weeklist da semana",
-		targetWeek, previousWeek, targetPath, previousPath,
-	)
-}
-
-// createDaylist executa o wizard por etapas e grava (ou só mostra, em dry-run).
+// createDaylist monta o plano pelo wizard e grava (ou só mostra, em dry-run).
 func createDaylist(v *vault.Vault, target time.Time, dryRun bool) error {
 	path := v.DaylistFile(target)
 	if fileExists(path) {
@@ -134,56 +112,28 @@ func createDaylist(v *vault.Vault, target time.Time, dryRun bool) error {
 		return nil
 	}
 
-	weeklistPath, week, fallback, err := weeklistForTarget(v, target)
-	if err != nil {
-		return err
-	}
-	if fallback {
-		fmt.Printf("Weeklist de %s não encontrada; usando a de %s.\n", vault.ISOWeek(target), week)
-	}
-
-	items, err := daylist.ParseWeeklist(weeklistPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf(
-			"weeklist %s não encontrada: %s\nrode `daylist week` para criá-la",
-			week, weeklistPath,
-		)
-	}
-	if err != nil {
-		return err
-	}
-	if len(items) == 0 {
-		fmt.Printf("Nenhum item pendente na weeklist de %s.\n", week)
-		return nil
-	}
-
-	stages := daylist.Stages(items)
-	result, err := wizard.Run(wizard.Options{
-		Stages: stages,
-		UI:     uiPrompter{},
-		Out:    os.Stdout,
-	})
-	if err != nil {
-		return err
-	}
-	if result.Canceled {
+	plan, err := planner.Build(v, target, uiPrompter{}, os.Stdout, time.Now())
+	switch {
+	case errors.Is(err, planner.ErrCanceled):
 		fmt.Println("Cancelado.")
 		return nil
-	}
-	if len(result.Resolved) == 0 {
-		fmt.Println("Nenhum item selecionado.")
+	case errors.Is(err, planner.ErrNoItems):
+		fmt.Println(err)
 		return nil
+	case errors.Is(err, planner.ErrDaylistExists):
+		fmt.Printf("Daylist de %s já existe: %s\n", target.Format("2006-01-02"), path)
+		return nil
+	case err != nil:
+		return err
 	}
-
-	content := daylist.Render(result.Resolved, time.Now())
 
 	if dryRun {
 		fmt.Printf("--- Daylist de %s (dry-run, nada foi gravado) ---\n", target.Format("2006-01-02"))
-		fmt.Print(content)
+		fmt.Print(plan.Content)
 		return nil
 	}
 
-	if err := daylist.Write(path, content); err != nil {
+	if err := planner.Write(v, plan); err != nil {
 		return err
 	}
 	fmt.Printf("Daylist de %s criada: %s\n", target.Format("2006-01-02"), path)

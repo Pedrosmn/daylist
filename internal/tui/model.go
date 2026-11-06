@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"daylist/internal/daylist"
+	"daylist/internal/planner"
 	"daylist/internal/timer"
 )
 
@@ -24,6 +25,8 @@ const (
 	modeHabitPick
 	modeWeeklist
 	modeConfirm
+	modePreview
+	modeClose
 )
 
 type pendingAction int
@@ -37,7 +40,10 @@ const maxUndo = 30
 
 type tickMsg time.Time
 
-type createdMsg struct{ err error }
+type plannedMsg struct {
+	plan *planner.Plan
+	err  error
+}
 type weekCreatedMsg struct{ err error }
 type openedMsg struct{ err error }
 type notifyFinishedMsg struct{}
@@ -60,6 +66,9 @@ type Model struct {
 	form    *formState
 	pending pendingAction
 	confirm string
+
+	preview *planner.Plan
+	summary daylist.Summary
 
 	habitChoices []daylist.Item
 	habitCursor  int
@@ -100,14 +109,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.now = m.backend.Today()
 		return m, tea.Batch(tickCmd(), m.checkThresholds())
 
-	case createdMsg:
+	case plannedMsg:
 		m.mode = modeMain
-		if msg.err != nil {
+		switch {
+		case errors.Is(msg.err, planner.ErrCanceled):
+			m.st = "Criação cancelada."
+		case errors.Is(msg.err, planner.ErrNoItems):
+			m.st = "Nenhum item selecionado."
+		case errors.Is(msg.err, planner.ErrDaylistExists):
+			m.st = "A daylist de hoje já existe."
+		case msg.err != nil:
 			m.err = msg.err.Error()
-		} else {
-			m.st = "Daylist de hoje criada."
+		case msg.plan != nil:
+			m.preview = msg.plan
+			m.mode = modePreview
+			m.st = ""
+			m.err = ""
 		}
-		m.reload()
 		return m, nil
 
 	case weekCreatedMsg:
@@ -144,6 +162,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateWeeklist(msg)
 		case modeConfirm:
 			return m.updateConfirm(msg)
+		case modePreview:
+			return m.updatePreview(msg)
+		case modeClose:
+			return m.updateClose(msg)
 		}
 	}
 
@@ -185,7 +207,9 @@ func (m *Model) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		m.undoLast()
 	case "n":
-		return m, m.createDaylist()
+		return m, m.planDaylist()
+	case "F":
+		m.openClose()
 	case "c":
 		return m, m.createWeeklist()
 	case "W":
@@ -671,15 +695,62 @@ func (f execFunc) SetStdin(io.Reader)  {}
 func (f execFunc) SetStdout(io.Writer) {}
 func (f execFunc) SetStderr(io.Writer) {}
 
-func (m *Model) createDaylist() tea.Cmd {
+func (m *Model) planDaylist() tea.Cmd {
 	if m.backend.DaylistExists() {
 		m.st = "A daylist de hoje já existe."
 		return nil
 	}
+
+	var plan *planner.Plan
 	m.st = "Criando a daylist no wizard..."
-	return tea.Exec(execFunc(m.backend.CreateDaylist), func(err error) tea.Msg {
-		return createdMsg{err: err}
+	return tea.Exec(execFunc(func() error {
+		var err error
+		plan, err = m.backend.PlanDaylist()
+		return err
+	}), func(err error) tea.Msg {
+		return plannedMsg{plan: plan, err: err}
 	})
+}
+
+func (m *Model) openClose() {
+	if m.note == nil {
+		m.err = "crie a daylist de hoje antes de fechar o dia."
+		return
+	}
+	m.summary = daylist.Summarize(m.items)
+	m.mode = modeClose
+}
+
+func (m *Model) updateClose(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc", "q", "F", "enter":
+		m.mode = modeMain
+	}
+	return m, nil
+}
+
+func (m *Model) updatePreview(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc", "q", "n":
+		m.preview = nil
+		m.mode = modeMain
+		m.st = "Criação cancelada."
+	case "enter", "s":
+		if m.preview == nil {
+			m.mode = modeMain
+			return m, nil
+		}
+		if err := m.backend.WriteDaylist(m.preview); err != nil {
+			m.err = "não foi possível criar a daylist: " + err.Error()
+			return m, nil
+		}
+		target := m.preview.Target
+		m.preview = nil
+		m.mode = modeMain
+		m.reload()
+		m.st = fmt.Sprintf("Daylist de %s criada.", target.Format("2006-01-02"))
+	}
+	return m, nil
 }
 
 func (m *Model) createWeeklist() tea.Cmd {
