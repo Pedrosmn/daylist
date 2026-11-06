@@ -17,6 +17,7 @@ type fakeBackend struct {
 	now         time.Time
 	noteContent string
 	noteExists  bool
+	days        map[string]bool
 	weekContent string
 	weekExists  bool
 	habits      []daylist.Item
@@ -27,14 +28,16 @@ type fakeBackend struct {
 	finishErr error
 	cleared   int
 
-	plan        *planner.Plan
-	planErr     error
-	planned     int
-	written     int
-	writeErr    error
-	createdWeek int
-	opened      int
-	notified    []string
+	plan           *planner.Plan
+	planErr        error
+	planned        int
+	plannedTarget  time.Time
+	written        int
+	writtenTargets []time.Time
+	writeErr       error
+	createdWeek    int
+	opened         int
+	notified       []string
 
 	savedNote string
 	noteSaves int
@@ -50,10 +53,21 @@ func newFake(note string) *fakeBackend {
 	}
 }
 
+func sameDate(a, b time.Time) bool {
+	return a.Format("2006-01-02") == b.Format("2006-01-02")
+}
+
 func (f *fakeBackend) Today() time.Time    { return f.now }
 func (f *fakeBackend) DaylistPath() string { return "/vault/days/today.md" }
 func (f *fakeBackend) DaylistRel() string  { return "days/today.md" }
 func (f *fakeBackend) DaylistExists() bool { return f.noteExists }
+
+func (f *fakeBackend) DaylistExistsOn(t time.Time) bool {
+	if sameDate(t, f.now) {
+		return f.noteExists
+	}
+	return f.days[t.Format("2006-01-02")]
+}
 
 func (f *fakeBackend) LoadNote() (*daylist.Note, error) {
 	if !f.noteExists {
@@ -88,8 +102,9 @@ func (f *fakeBackend) SaveWeeklist(note *daylist.Note) error {
 
 func (f *fakeBackend) WeeklistHabits() ([]daylist.Item, error) { return f.habits, nil }
 
-func (f *fakeBackend) PlanDaylist() (*planner.Plan, error) {
+func (f *fakeBackend) PlanDaylist(target time.Time) (*planner.Plan, error) {
 	f.planned++
+	f.plannedTarget = target
 	if f.planErr != nil {
 		return nil, f.planErr
 	}
@@ -101,9 +116,12 @@ func (f *fakeBackend) WriteDaylist(plan *planner.Plan) error {
 		return f.writeErr
 	}
 	f.written++
-	f.savedNote = plan.Content
-	f.noteContent = plan.Content
-	f.noteExists = true
+	f.writtenTargets = append(f.writtenTargets, plan.Target)
+	if sameDate(plan.Target, f.now) {
+		f.savedNote = plan.Content
+		f.noteContent = plan.Content
+		f.noteExists = true
+	}
 	return nil
 }
 
@@ -209,8 +227,10 @@ func TestMissingDaylistView(t *testing.T) {
 
 	m := New(fake)
 	view := m.View()
-	if !strings.Contains(view, "ainda não existe") || !strings.Contains(view, "n  criar") {
-		t.Errorf("view sem aviso de daylist ausente:\n%s", view)
+	for _, want := range []string{"ainda não existe", "n  criar a daylist de hoje", "N  criar a daylist de amanhã"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view sem aviso de daylist ausente (%q):\n%s", want, view)
+		}
 	}
 }
 
@@ -545,8 +565,58 @@ func TestCreateDaylistAlreadyExists(t *testing.T) {
 	m := New(fake)
 
 	m = updateModel(t, m, keyRunes("n"))
-	if !strings.Contains(m.st, "já existe") {
+	if !strings.Contains(m.st, "já existe") || !strings.Contains(m.st, "Pressione N") {
 		t.Errorf("status = %q", m.st)
+	}
+}
+
+func TestCreateTomorrowDaylist(t *testing.T) {
+	fake := newFake(testNote)
+	tomorrow := fake.now.AddDate(0, 0, 1)
+	plan := &planner.Plan{
+		Target:  tomorrow,
+		Week:    "2026-W45",
+		Content: "conteúdo de amanhã\n",
+	}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("N"))
+	if !strings.Contains(m.st, "amanhã") {
+		t.Fatalf("status = %q, want menção a amanhã", m.st)
+	}
+
+	m = updateModel(t, m, plannedMsg{plan: plan, target: tomorrow})
+	if m.mode != modePreview {
+		t.Fatalf("mode = %v, want preview", m.mode)
+	}
+	if !strings.Contains(m.View(), tomorrow.Format("2006-01-02")) {
+		t.Errorf("prévia não mostra a data de amanhã:\n%s", m.View())
+	}
+
+	m = updateModel(t, m, keyType(tea.KeyEnter))
+	if fake.written != 1 || len(fake.writtenTargets) != 1 || !sameDate(fake.writtenTargets[0], tomorrow) {
+		t.Fatalf("daylist de amanhã não foi gravada: written=%d targets=%v", fake.written, fake.writtenTargets)
+	}
+	if fake.noteContent != testNote {
+		t.Error("a daylist de hoje foi alterada ao criar a de amanhã")
+	}
+	if !strings.Contains(m.st, tomorrow.Format("2006-01-02")) {
+		t.Errorf("status = %q, want data de amanhã", m.st)
+	}
+}
+
+func TestCreateTomorrowAlreadyExists(t *testing.T) {
+	fake := newFake(testNote)
+	tomorrow := fake.now.AddDate(0, 0, 1)
+	fake.days = map[string]bool{tomorrow.Format("2006-01-02"): true}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("N"))
+	if !strings.Contains(m.st, "amanhã") || !strings.Contains(m.st, "já existe") {
+		t.Errorf("status = %q", m.st)
+	}
+	if strings.Contains(m.st, "Pressione N") {
+		t.Errorf("status de amanhã não deveria sugerir N: %q", m.st)
 	}
 }
 
@@ -602,8 +672,12 @@ func TestHelpModeReturnsOnAnyKey(t *testing.T) {
 	if m.mode != modeHelp {
 		t.Fatalf("mode = %v, want help", m.mode)
 	}
-	if !strings.Contains(m.View(), "Navegação") {
-		t.Errorf("view de ajuda inesperada:\n%s", m.View())
+	view := m.View()
+	if !strings.Contains(view, "Navegação") {
+		t.Errorf("view de ajuda inesperada:\n%s", view)
+	}
+	if !strings.Contains(view, "N  criar a daylist de amanhã") {
+		t.Errorf("ajuda não menciona a criação da daylist de amanhã:\n%s", view)
 	}
 	m = updateModel(t, m, keyRunes("x"))
 	if m.mode != modeMain {

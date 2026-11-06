@@ -77,6 +77,8 @@ Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
   concluídos e pendentes. O fechamento é somente leitura: não copia pendentes
   nem altera a nota.
 - [x] T16. Mostrar a motivação do item ao destacá-lo e ao iniciar o timer.
+- [x] T17. Criar a daylist de amanhã pelo TUI com `N`, reutilizando o wizard e
+  a prévia antes de gravar.
 
 ### 4. Documentação e validação
 

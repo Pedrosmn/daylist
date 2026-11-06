@@ -20,6 +20,7 @@ type Backend interface {
 	DaylistPath() string
 	DaylistRel() string
 	DaylistExists() bool
+	DaylistExistsOn(time.Time) bool
 	LoadNote() (*daylist.Note, error)
 	SaveNote(*daylist.Note) error
 
@@ -29,8 +30,8 @@ type Backend interface {
 	SaveWeeklist(*daylist.Note) error
 	WeeklistHabits() ([]daylist.Item, error)
 
-	// PlanDaylist executa o wizard e devolve a prévia, sem gravar.
-	PlanDaylist() (*planner.Plan, error)
+	// PlanDaylist executa o wizard para a data alvo e devolve a prévia, sem gravar.
+	PlanDaylist(time.Time) (*planner.Plan, error)
 	WriteDaylist(*planner.Plan) error
 	CreateWeeklist() error
 	OpenDaylist() error
@@ -49,7 +50,7 @@ type RealBackend struct {
 	Vault *vault.Vault
 	Now   func() time.Time
 
-	PlanDaylistFn    func() (*planner.Plan, error)
+	PlanDaylistFn    func(time.Time) (*planner.Plan, error)
 	WriteDaylistFn   func(*planner.Plan) error
 	CreateWeeklistFn func() error
 	NotifyFn         func(title, body string) error
@@ -71,7 +72,11 @@ func (b *RealBackend) DaylistPath() string { return b.Vault.DaylistFile(b.Today(
 
 func (b *RealBackend) DaylistRel() string { return b.Vault.DaylistRel(b.Today()) }
 
-func (b *RealBackend) DaylistExists() bool { return fileExists(b.DaylistPath()) }
+func (b *RealBackend) DaylistExists() bool { return b.DaylistExistsOn(b.Today()) }
+
+func (b *RealBackend) DaylistExistsOn(t time.Time) bool {
+	return fileExists(b.Vault.DaylistFile(t))
+}
 
 func (b *RealBackend) LoadNote() (*daylist.Note, error) {
 	return daylist.LoadNote(b.DaylistPath())
@@ -111,11 +116,11 @@ func (b *RealBackend) WeeklistHabits() ([]daylist.Item, error) {
 	return habits, nil
 }
 
-func (b *RealBackend) PlanDaylist() (*planner.Plan, error) {
+func (b *RealBackend) PlanDaylist(target time.Time) (*planner.Plan, error) {
 	if b.PlanDaylistFn == nil {
 		return nil, errors.New("planejamento da daylist não configurado")
 	}
-	return b.PlanDaylistFn()
+	return b.PlanDaylistFn(target)
 }
 
 func (b *RealBackend) WriteDaylist(plan *planner.Plan) error {

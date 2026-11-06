@@ -41,8 +41,9 @@ const maxUndo = 30
 type tickMsg time.Time
 
 type plannedMsg struct {
-	plan *planner.Plan
-	err  error
+	plan   *planner.Plan
+	target time.Time
+	err    error
 }
 type weekCreatedMsg struct{ err error }
 type openedMsg struct{ err error }
@@ -117,7 +118,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case errors.Is(msg.err, planner.ErrNoItems):
 			m.st = "Nenhum item selecionado."
 		case errors.Is(msg.err, planner.ErrDaylistExists):
-			m.st = "A daylist de hoje já existe."
+			m.st = m.daylistExistsMessage(msg.target)
 		case msg.err != nil:
 			m.err = msg.err.Error()
 		case msg.plan != nil:
@@ -207,7 +208,9 @@ func (m *Model) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		m.undoLast()
 	case "n":
-		return m, m.planDaylist()
+		return m, m.planDaylist(m.backend.Today())
+	case "N":
+		return m, m.planDaylist(m.backend.Today().AddDate(0, 0, 1))
 	case "F":
 		m.openClose()
 	case "c":
@@ -695,21 +698,42 @@ func (f execFunc) SetStdin(io.Reader)  {}
 func (f execFunc) SetStdout(io.Writer) {}
 func (f execFunc) SetStderr(io.Writer) {}
 
-func (m *Model) planDaylist() tea.Cmd {
-	if m.backend.DaylistExists() {
-		m.st = "A daylist de hoje já existe."
+func (m *Model) planDaylist(target time.Time) tea.Cmd {
+	if m.backend.DaylistExistsOn(target) {
+		m.st = m.daylistExistsMessage(target)
 		return nil
 	}
 
 	var plan *planner.Plan
-	m.st = "Criando a daylist no wizard..."
+	m.st = fmt.Sprintf("Criando a daylist de %s no wizard...", m.dateWord(target))
 	return tea.Exec(execFunc(func() error {
 		var err error
-		plan, err = m.backend.PlanDaylist()
+		plan, err = m.backend.PlanDaylist(target)
 		return err
 	}), func(err error) tea.Msg {
-		return plannedMsg{plan: plan, err: err}
+		return plannedMsg{plan: plan, target: target, err: err}
 	})
+}
+
+// dateWord descreve a data alvo em relação ao dia atual do TUI.
+func (m *Model) dateWord(t time.Time) string {
+	today := m.backend.Today()
+	switch t.Format("2006-01-02") {
+	case today.Format("2006-01-02"):
+		return "hoje"
+	case today.AddDate(0, 0, 1).Format("2006-01-02"):
+		return "amanhã"
+	default:
+		return t.Format("2006-01-02")
+	}
+}
+
+func (m *Model) daylistExistsMessage(target time.Time) string {
+	msg := fmt.Sprintf("A daylist de %s já existe.", m.dateWord(target))
+	if m.dateWord(target) == "hoje" {
+		msg += " Pressione N para criar a de amanhã."
+	}
+	return msg
 }
 
 func (m *Model) openClose() {

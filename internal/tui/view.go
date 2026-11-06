@@ -56,7 +56,8 @@ func (m Model) mainView() string {
 
 	if m.note == nil {
 		b.WriteString("A daylist de hoje ainda não existe.\n\n")
-		b.WriteString("  n  criar pelo wizard (reutiliza a weeklist)\n")
+		b.WriteString("  n  criar a daylist de hoje pelo wizard (reutiliza a weeklist)\n")
+		b.WriteString("  N  criar a daylist de amanhã pelo wizard\n")
 		b.WriteString("  c  criar a weeklist atual, se estiver faltando\n")
 		b.WriteString("  r  recarregar\n")
 		b.WriteString("  q  sair\n")
@@ -70,7 +71,7 @@ func (m Model) mainView() string {
 	b.WriteString("\n")
 	b.WriteString(styleHelp.Render("e motivação · a Extra task · A Extra hábito · W weeklist · F fechar o dia"))
 	b.WriteString("\n")
-	b.WriteString(styleHelp.Render("n nova daylist · c weeklist · o abrir · q sair"))
+	b.WriteString(styleHelp.Render("n daylist de hoje · N daylist de amanhã · c weeklist · o abrir · q sair"))
 	return b.String()
 }
 
@@ -89,6 +90,7 @@ func (m Model) helpView() string {
 	b.WriteString(styleHeading.Render("Daylist e semana"))
 	b.WriteString("\n")
 	b.WriteString("  n  criar a daylist de hoje pelo wizard, com prévia antes de gravar\n")
+	b.WriteString("  N  criar a daylist de amanhã pelo wizard, com prévia antes de gravar\n")
 	b.WriteString("  c  criar a weeklist atual, se estiver faltando\n")
 	b.WriteString("  W  ver a weeklist atual; espaço alterna #always em hábitos\n")
 	b.WriteString("  F  fechar o dia com resumo de planejado vs. real\n")

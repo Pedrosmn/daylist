@@ -238,6 +238,7 @@ concluídos, motivações e o status do timer.
 | `W` | ver a weeklist atual e alternar `#always` em hábitos |
 | `u` | desfazer a última edição da daylist |
 | `n` | criar a daylist de hoje pelo wizard, com prévia antes de gravar |
+| `N` | criar a daylist de amanhã pelo wizard, com prévia antes de gravar |
 | `c` | criar a weeklist atual, se estiver faltando |
 | `F` | fechar o dia com resumo de planejado vs. real |
 | `o` | abrir a daylist de hoje no Obsidian |
@@ -245,7 +246,8 @@ concluídos, motivações e o status do timer.
 | `?` | tela de ajuda |
 | `q` / `Ctrl+C` | sair |
 
-A criação da daylist suspende o TUI e executa o wizard normal no terminal.
+A criação da daylist (de hoje com `n` ou de amanhã com `N`) suspende o TUI e
+executa o wizard normal no terminal.
 Antes de gravar, o TUI mostra uma prévia com os hábitos `#always` que entrarão
 automaticamente, o tempo planejado e um alerta quando o dia passa do limite
 configurado em `DAYLIST_DAY_LIMIT` (padrão de 8h). `Enter`/`s` grava e `Esc`
