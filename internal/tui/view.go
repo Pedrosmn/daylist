@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"daylist/internal/daylist"
 	"daylist/internal/planner"
 	"daylist/internal/timer"
@@ -69,7 +71,7 @@ func (m Model) mainView() string {
 	b.WriteString(m.messageView())
 	b.WriteString(styleHelp.Render("? ajuda · j/k mover · espaço marcar · s timer · p pausar · x parar"))
 	b.WriteString("\n")
-	b.WriteString(styleHelp.Render("e motivação · a Extra task · A Extra hábito · W weeklist · F fechar o dia"))
+	b.WriteString(styleHelp.Render("m motivação · a Extra task · A Extra hábito · W weeklist · F fechar o dia"))
 	b.WriteString("\n")
 	b.WriteString(styleHelp.Render("n daylist de hoje · N daylist de amanhã · c weeklist · o abrir · q sair"))
 	return b.String()
@@ -107,7 +109,7 @@ func (m Model) helpView() string {
 	b.WriteString("\n")
 	b.WriteString("  a  adicionar Extra task (descrição, tempo, prioridade e motivação)\n")
 	b.WriteString("  A  adicionar hábito Extra escolhido da weeklist\n")
-	b.WriteString("  e  editar ou remover a motivação do item selecionado\n\n")
+	b.WriteString("  m  editar ou remover a motivação do item selecionado\n\n")
 
 	b.WriteString(styleHelp.Render("qualquer tecla volta"))
 	return b.String()
@@ -129,10 +131,11 @@ func (m Model) formView() string {
 		b.WriteString("\n\n")
 	}
 
-	for i := 0; i < form.lastField(); i++ {
-		label := form.fieldLabel(i)
-		if form.kind == formExtraTask && i == 2 {
-			line := fmt.Sprintf("%-11s ← %s →", label+":", form.flagLabel())
+	contentWidth := m.formContentWidth()
+	for i := range form.fields {
+		field := &form.fields[i]
+		if field.kind == fieldPriority {
+			line := fmt.Sprintf("%-11s ← %s →", field.prefix(), form.flagLabel())
 			if form.focus == i {
 				line = styleSelected.Render(line)
 			}
@@ -140,9 +143,9 @@ func (m Model) formView() string {
 			b.WriteString("\n")
 			continue
 		}
-		b.WriteString(label)
-		b.WriteString(": ")
-		b.WriteString(form.inputs[i].View())
+		field.layout(contentWidth - lipgloss.Width(field.prefix()))
+		b.WriteString(field.prefix())
+		b.WriteString(field.View())
 		b.WriteString("\n")
 	}
 
@@ -153,7 +156,7 @@ func (m Model) formView() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(styleHelp.Render("tab/↑↓ campo · ←/→ prioridade · enter/ctrl+s salva · esc cancela"))
+	b.WriteString(styleHelp.Render(form.help()))
 	return styleForm.Render(b.String())
 }
 
@@ -334,18 +337,7 @@ func (m Model) renderItem(item daylist.NoteItem, selected, week bool) string {
 		box = "[x]"
 	}
 
-	meta := ""
-	if item.Time != "" {
-		meta += item.Time + " "
-	}
-	if item.Flag != "" {
-		meta += "(" + item.Flag + ") "
-	}
-	if meta != "" {
-		meta += "- "
-	}
-
-	line := fmt.Sprintf("%s%s %s%s", cursor, box, meta, item.Desc)
+	line := fmt.Sprintf("%s%s %s", cursor, box, itemText(item.Time, item.Flag, item.Desc))
 	if week && item.Always {
 		line += " #always"
 	}
@@ -362,11 +354,48 @@ func (m Model) renderItem(item daylist.NoteItem, selected, week bool) string {
 	b := line + "\n"
 
 	if item.Motivation != "" {
-		for _, part := range strings.Split(item.Motivation, "\n") {
+		// O cursor ocupa 2 colunas e o blockquote é indentado com 6 espaços
+		// antes de "> ", totalizando 8 colunas fixas.
+		const indent = 8
+		width := m.textWidth() - indent
+		if width < 1 {
+			width = 1
+		}
+		for _, part := range wrapText(item.Motivation, width) {
 			b += "      " + styleMotivate.Render("> "+part) + "\n"
 		}
 	}
 	return b
+}
+
+func (m Model) textWidth() int {
+	if m.width > 0 {
+		return m.width
+	}
+	return 80
+}
+
+// formContentWidth desconta a borda e o padding do formulário.
+func (m Model) formContentWidth() int {
+	if m.width > 4 {
+		return m.width - 4
+	}
+	return defaultFormWidth
+}
+
+// itemText monta o rótulo curto de um item, como "15 min (U) - AWS".
+func itemText(time, flag, desc string) string {
+	meta := ""
+	if time != "" {
+		meta += time + " "
+	}
+	if flag != "" {
+		meta += "(" + flag + ") "
+	}
+	if meta != "" {
+		meta += "- "
+	}
+	return meta + desc
 }
 
 func (m Model) selectedLine() int {

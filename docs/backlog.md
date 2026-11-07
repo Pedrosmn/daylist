@@ -2,6 +2,130 @@
 
 Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
 
+## Ciclo planejado — Ajustes de UX do TUI (2026-11-07)
+
+Ajustes de uso diário no TUI, sem mudar o formato das notas nem o fluxo do
+wizard. As tarefas abaixo são a referência do próximo ciclo; a ordem sugerida
+está no fim da seção.
+
+### Decisões
+
+- A tecla `m` substitui `e` para editar ou remover a motivação. `e` deixa de
+  existir, inclusive na ajuda e no README.
+- O formulário de motivação mostra o nome do item no título e não repete o
+  rótulo “Motivação”. O rodapé é contextual: só exibe teclas que funcionam
+  naquele formulário.
+- O campo de motivação continua sendo uma linha no modelo, mas com wrap visual:
+  ao chegar na largura disponível o texto desce uma linha em vez de rolar
+  lateralmente. `Enter` salva; `Esc` cancela.
+- A motivação na tela principal também quebra pela largura do terminal, sem
+  cortar o texto.
+- Quando houver timer rodando, a tela principal mostra uma barra de progresso
+  do tempo decorrido até o máximo planejado, com uma marcação no mínimo. Sem
+  faixa de tempo conhecida, a barra não é exibida.
+- A notificação de mínimo/máximo passa a funcionar com o TUI fechado por meio
+  do daemon `daylist timer watch`, iniciado automaticamente e com instância
+  única. Ele notifica uma vez por limite e encerra quando não houver timer.
+- O TUI ganha a daylist de ontem: `y` alterna entre hoje e ontem; é possível
+  ver o conteúdo, marcar/desmarcar itens e adicionar Extra. Timer e edição de
+  motivação ficam desabilitados em ontem.
+- Navegar por qualquer data e editar motivação em dias passados ficam adiados.
+
+### 1. Motivação
+
+- [x] M1. Trocar o atalho de motivação de `e` para `m` no TUI, na tela de
+  ajuda, no README e nos testes. Critério: `m` abre o formulário; `e` não faz
+  mais nada.
+- [x] M2. Mostrar a descrição do item no título do formulário (por exemplo,
+  `Motivação · 15 min (U) - AWS`) e remover o rótulo “Motivação” duplicado.
+  Critério: o formulário identifica claramente qual item está sendo editado.
+- [x] M3. Deixar o rodapé do formulário contextual: no formulário de motivação,
+  exibir apenas `enter salva · esc cancela`; não mostrar `tab/↑↓ campo` nem
+  `←/→ prioridade` quando esses controles não existem.
+- [x] M4. Trocar o campo de linha única que rola lateralmente por um campo com
+  wrap visual. Critério: ao digitar além da largura, o texto desce uma linha,
+  o cursor acompanha, `Enter` salva e o valor gravado continua uma única linha.
+  Aplicar o mesmo comportamento ao campo de motivação do Extra task.
+- [x] M5. Quebrar a motivação exibida na tela principal pela largura
+  disponível, descontando cursor e indentação. Critério: motivações longas e
+  com múltiplas linhas aparecem completas, sem corte, inclusive em terminal
+  estreito.
+- [x] M6. Cobrir M1–M5 com testes de modelo e de renderização: atalho, título,
+  rodapé contextual, wrap visual, `Enter`/`Esc` e valor persistido sem quebras.
+
+### 2. Barra do timer
+
+- [ ] P1. Desenhar na tela principal, quando houver timer, uma barra do tempo
+  decorrido até o máximo planejado, com marcação no mínimo e rótulos de mínimo,
+  máximo e tempo atual. Critério: a barra acompanha o tick e usa a largura do
+  terminal.
+- [ ] P2. Tratar os casos especiais: pausa (barra mostra o acumulado e indica o
+  estado), mínimo igual ao máximo (marcador único no fim), ausência de faixa
+  (barra oculta) e terminal estreito (barra mínima sem quebrar o layout).
+- [ ] P3. Cobrir o cálculo e a renderização da barra com testes: 0%, antes do
+  mínimo, mínimo atingido, máximo atingido, pausa e larguras pequenas.
+
+### 3. Notificação com o TUI fechado
+
+- [ ] N1. Criar `daylist timer watch`: lê o estado do timer, espera até o
+  próximo limite e envia `notify-send` uma única vez por limite, usando os
+  sinalizadores já persistidos em `MinNotified`/`MaxNotified`. Critério: sem
+  TUI aberto, a notificação chega perto do mínimo e do máximo; o processo sai
+  quando não há timer.
+- [ ] N2. Iniciar o watch automaticamente em `timer start` e ao iniciar o timer
+  pelo TUI, em processo destacado. Critério: não abrir janela/terminal extra e
+  não bloquear o comando.
+- [ ] N3. Garantir instância única (lock/arquivo de PID) e encerrar o watch no
+  `timer stop`, ao limpar o estado ou ao detectar estado inexistente. Critério:
+  não há notificações duplicadas nem processos órfãos.
+- [ ] N4. Respeitar pausa e retomada: timer pausado não notifica; ao retomar, o
+  watch recalcula o próximo limite. Critério: pausar antes do mínimo não dispara
+  notificação durante a pausa.
+- [ ] N5. Cobrir o watch com relógio injetável e estado falso: notificação
+  única, mínimo, máximo, pausa, retomada, reinício e ausência de timer.
+  Documentar que `notify-send` continua sendo o transporte no Linux.
+
+### 4. Daylist de ontem
+
+- [ ] Y1. Separar a data visualizada da data de hoje no modelo do TUI. Critério:
+  `reload` carrega a data selecionada e o cabeçalho indica claramente quando a
+  tela não é a de hoje.
+- [ ] Y2. Adicionar o atalho `y` para alternar entre hoje e ontem, com `t`/`Esc`
+  voltando explicitamente para hoje. Critério: se a daylist de ontem não
+  existir, mostrar mensagem clara sem sair do TUI.
+- [ ] Y3. Permitir marcar/desmarcar itens e adicionar Extra na daylist de ontem,
+  gravando sempre no arquivo daquela data. O Extra hábito usa a weeklist da
+  semana da data visualizada; se ela não existir, avisar. Critério: o undo é
+  isolado por dia e não grava conteúdo de ontem no arquivo de hoje.
+- [ ] Y4. Desabilitar timer e edição de motivação em ontem, com mensagem ou
+  rodapé indicando a limitação. Critério: o banner e os controles do timer
+  continuam se referindo apenas ao timer de hoje.
+- [ ] Y5. Tratar a virada do dia e o retorno para hoje sem perder cursor,
+  seleção ou estado de edição. Critério: recarregar ontem depois da meia-noite
+  não altera a data de hoje nem grava no arquivo errado.
+- [ ] Y6. Cobrir Y1–Y5 com testes de modelo: alternância de dia, arquivo de
+  destino, toggle, Extra, undo por dia, timer desabilitado e virada do dia.
+
+### 5. Documentação e validação
+
+- [ ] DOC1. Atualizar o README: tecla `m`, formulário de motivação com wrap,
+  barra do timer, `timer watch`, atalho `y` e limitações da daylist de ontem.
+- [ ] DOC2. Atualizar o roadmap com o ciclo e o estado das tarefas.
+- [ ] DOC3. Rodar `make ci` e validar manualmente em terminal real: `m`,
+  motivação longa, barra do timer, notificação com o TUI fechado, ontem com
+  toggle/Extra e retorno para hoje.
+
+### Ordem de execução
+
+`M1 → M2/M3 → M4/M5 → M6 → P1 → P2/P3 → N1 → N2/N3 → N4/N5 → Y1 → Y2/Y3 → Y4/Y5 → Y6 → DOC1/DOC2/DOC3`.
+
+### Adiado
+
+- Navegar por qualquer data no TUI, em vez de apenas hoje/ontem.
+- Editar motivação e remover itens em dias passados.
+- Rodar o `timer watch` como serviço systemd de usuário; o daemon destacado é
+  suficiente para o próximo ciclo.
+
 ## Ciclo entregue — TUI e metadados
 
 ### Decisões
@@ -178,13 +302,16 @@ reaproveitando o tema do TUI, e aposentou o fzf. O fluxo por etapas, o
 ## Timer
 
 - Estado em `$XDG_STATE_HOME/daylist/`, fora do vault.
-- `timer watch` para notificações contínuas sem depender de `timer status`.
+- `timer watch` foi promovido ao ciclo planejado de UX do TUI; a notificação
+  com o TUI fechado usa um daemon destacado e instância única.
 - Auto-stop na virada do dia ou após um limite de horas; a decisão atual é
   apenas sinalizar mínimo e máximo.
 
 ## Produto
 
 - `daylist new --carry`: trazer tasks não feitas de ontem para a daylist de hoje.
+- Navegar por qualquer data no TUI foi adiado; o próximo ciclo cobre apenas
+  hoje/ontem.
 - Marcar o item correspondente na weeklist ao dar `timer stop`; ou
   `daylist week sync`.
 - `daylist stats week`: tempo por categoria e taxa de conclusão.

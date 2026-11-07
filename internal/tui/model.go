@@ -106,6 +106,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		if m.form != nil {
+			m.form.layout(m.formContentWidth())
+		}
 		return m, nil
 
 	case tickMsg:
@@ -215,7 +218,7 @@ func (m *Model) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.toggleTimer()
 	case "x":
 		m.stopTimer()
-	case "e":
+	case "m":
 		m.editMotivation()
 	case "a":
 		m.openExtraTask()
@@ -303,6 +306,7 @@ func (m *Model) updateHabitPick(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		habit := m.habitChoices[m.habitCursor]
 		m.form = newExtraHabitForm(habit)
+		m.form.layout(m.formContentWidth())
 		m.mode = modeForm
 	}
 	return m, nil
@@ -526,7 +530,8 @@ func (m *Model) editMotivation() {
 		return
 	}
 	current := strings.ReplaceAll(item.Motivation, "\n", " ")
-	m.form = newMotivationForm(item.Line, current)
+	m.form = newMotivationForm(item.Line, current, itemText(item.Time, item.Flag, item.Desc))
+	m.form.layout(m.formContentWidth())
 	m.mode = modeForm
 }
 
@@ -539,6 +544,7 @@ func (m *Model) openExtraTask() {
 		return
 	}
 	m.form = newExtraTaskForm()
+	m.form.layout(m.formContentWidth())
 	m.mode = modeForm
 }
 
@@ -613,7 +619,7 @@ func (m *Model) submitForm() tea.Cmd {
 
 	case formMotivation:
 		m.pushUndo()
-		item, err = m.note.SetMotivation(form.line, form.value(0))
+		item, err = m.note.SetMotivation(form.line, form.motivation())
 	}
 
 	if err != nil {
@@ -640,7 +646,7 @@ func (m *Model) submitForm() tea.Cmd {
 	case formExtraHabit:
 		m.st = "Hábito Extra adicionado em " + form.habit.Category + "."
 	default:
-		if strings.TrimSpace(form.value(0)) == "" {
+		if form.motivation() == "" {
 			m.st = "Motivação removida."
 		} else {
 			m.st = "Motivação atualizada."
