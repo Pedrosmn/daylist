@@ -266,7 +266,9 @@ O hábito Extra é escolhido entre os hábitos pendentes da weeklist e entra na
 categoria original de `# Hábitos`, contando no feedback. A task Extra vai para
 `# Extra`. A motivação aparece abaixo do item e também é mostrada ao iniciar o
 timer. O atalho `m` abre um formulário que identifica o item, quebra o texto na
-largura do terminal e grava sempre uma única linha. O aviso de tempo
+largura do terminal e grava sempre uma única linha. Com o timer ativo, a tela
+principal mostra uma barra do tempo decorrido até o máximo planejado, com
+marcação no mínimo e rótulos de mínimo, atual e máximo. O aviso de tempo
 mínimo/máximo do timer usa as mesmas regras e mensagens do CLI.
 
 `F` abre o resumo de fechamento do dia com tempo planejado, tempo real já

@@ -52,6 +52,7 @@ func (m Model) mainView() string {
 		b.WriteString("  ")
 		b.WriteString(styleTimer.Render(timer.PromptText(m.timer)))
 		b.WriteString("\n")
+		b.WriteString(m.timerBarView())
 	}
 
 	b.WriteString("\n")

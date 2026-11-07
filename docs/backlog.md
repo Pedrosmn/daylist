@@ -55,14 +55,14 @@ está no fim da seção.
 
 ### 2. Barra do timer
 
-- [ ] P1. Desenhar na tela principal, quando houver timer, uma barra do tempo
+- [x] P1. Desenhar na tela principal, quando houver timer, uma barra do tempo
   decorrido até o máximo planejado, com marcação no mínimo e rótulos de mínimo,
   máximo e tempo atual. Critério: a barra acompanha o tick e usa a largura do
   terminal.
-- [ ] P2. Tratar os casos especiais: pausa (barra mostra o acumulado e indica o
+- [x] P2. Tratar os casos especiais: pausa (barra mostra o acumulado e indica o
   estado), mínimo igual ao máximo (marcador único no fim), ausência de faixa
   (barra oculta) e terminal estreito (barra mínima sem quebrar o layout).
-- [ ] P3. Cobrir o cálculo e a renderização da barra com testes: 0%, antes do
+- [x] P3. Cobrir o cálculo e a renderização da barra com testes: 0%, antes do
   mínimo, mínimo atingido, máximo atingido, pausa e larguras pequenas.
 
 ### 3. Notificação com o TUI fechado
