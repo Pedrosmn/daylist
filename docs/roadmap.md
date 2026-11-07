@@ -23,6 +23,8 @@
 > em [docs/backlog.md](backlog.md).
 > Atualizado em 2026-11-07: `M1–M6` concluídos (atalho `m`, formulário de
 > motivação contextual e wrap de texto na edição e na tela principal).
+> Atualizado em 2026-11-07: `P1–P3` concluídos (barra do timer na tela
+> principal, com mínimo, máximo e casos de pausa e terminal estreito).
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
@@ -110,10 +112,10 @@ stdout redirecionado, `Ctrl+C` e execução sem TTY.
 
 ## 🚧 Próximo ciclo — Ajustes de UX do TUI
 
-Status em 2026-11-07: `M1–M6` concluídos. As tarefas detalhadas estão em
-[docs/backlog.md](backlog.md): `P1–P3` (barra do timer), `N1–N5` (notificação
-com o TUI fechado), `Y1–Y6` (daylist de ontem) e `DOC1–DOC3` (documentação e
-validação) seguem planejados.
+Status em 2026-11-07: `M1–M6` e `P1–P3` concluídos. As tarefas detalhadas estão
+em [docs/backlog.md](backlog.md): `N1–N5` (notificação com o TUI fechado),
+`Y1–Y6` (daylist de ontem) e `DOC1–DOC3` (documentação e validação) seguem
+planejados.
 
 - `m` substitui `e` para editar ou remover a motivação; `e` deixa de existir.
 - O formulário de motivação mostra o nome do item, usa rodapé contextual e tem
@@ -219,8 +221,8 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 - ✅ Aviso visual no status/prompt ao atingir o mínimo e o máximo do tempo planejado; notificação desktop via `notify-send`. O máximo apenas sinaliza, sem auto-stop.
 - 🚧 Notificação com o TUI fechado: daemon `daylist timer watch`, iniciado
   automaticamente e com instância única, planejado em `N1–N5` no backlog.
-- 🚧 Barra de progresso do timer na tela principal, com marcação no mínimo e
-  máximo no fim, planejada em `P1–P3` no backlog.
+- ✅ Barra de progresso do timer na tela principal, com marcação no mínimo,
+  máximo no fim e estado de pausa, entregue em 2026-11-07 (`P1–P3`).
 - Estado do timer vive em `.daylist-timer-state.json` na raiz do vault; mover para `$XDG_STATE_HOME/daylist/` está no backlog.
 
 ---
@@ -260,7 +262,7 @@ o roadmap focado no escopo atual.
 5. **Contínuo**: ✅ README/Makefile, CI, testes de `cmd` e versionamento do binário.
 6. ✅ **Ciclo anterior**: TUI entregue com prévia da daylist e fechamento do dia — tarefas em [docs/backlog.md](backlog.md).
 7. ✅ **Médio**: migrar o wizard para Bubble Tea e aposentar o fzf — tarefas `B1–B12` em [docs/backlog.md](backlog.md).
-8. 🚧 **Em andamento**: ajustes de UX do TUI — `M1–M6` concluídos; `P1–P3`, `N1–N5`, `Y1–Y6` e `DOC1–DOC3` em [docs/backlog.md](backlog.md).
+8. 🚧 **Em andamento**: ajustes de UX do TUI — `M1–M6` e `P1–P3` concluídos; `N1–N5`, `Y1–Y6` e `DOC1–DOC3` em [docs/backlog.md](backlog.md).
 
 ---
 
