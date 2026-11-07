@@ -67,21 +67,21 @@ está no fim da seção.
 
 ### 3. Notificação com o TUI fechado
 
-- [ ] N1. Criar `daylist timer watch`: lê o estado do timer, espera até o
+- [x] N1. Criar `daylist timer watch`: lê o estado do timer, espera até o
   próximo limite e envia `notify-send` uma única vez por limite, usando os
   sinalizadores já persistidos em `MinNotified`/`MaxNotified`. Critério: sem
   TUI aberto, a notificação chega perto do mínimo e do máximo; o processo sai
   quando não há timer.
-- [ ] N2. Iniciar o watch automaticamente em `timer start` e ao iniciar o timer
+- [x] N2. Iniciar o watch automaticamente em `timer start` e ao iniciar o timer
   pelo TUI, em processo destacado. Critério: não abrir janela/terminal extra e
   não bloquear o comando.
-- [ ] N3. Garantir instância única (lock/arquivo de PID) e encerrar o watch no
+- [x] N3. Garantir instância única (lock/arquivo de PID) e encerrar o watch no
   `timer stop`, ao limpar o estado ou ao detectar estado inexistente. Critério:
   não há notificações duplicadas nem processos órfãos.
-- [ ] N4. Respeitar pausa e retomada: timer pausado não notifica; ao retomar, o
+- [x] N4. Respeitar pausa e retomada: timer pausado não notifica; ao retomar, o
   watch recalcula o próximo limite. Critério: pausar antes do mínimo não dispara
   notificação durante a pausa.
-- [ ] N5. Cobrir o watch com relógio injetável e estado falso: notificação
+- [x] N5. Cobrir o watch com relógio injetável e estado falso: notificação
   única, mínimo, máximo, pausa, retomada, reinício e ausência de timer.
   Documentar que `notify-send` continua sendo o transporte no Linux.
 

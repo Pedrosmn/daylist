@@ -32,6 +32,7 @@ var timerStartCmd = &cobra.Command{
 		statePath := v.StateFile()
 
 		if s, err := timer.Load(statePath); err == nil {
+			_ = timer.SpawnWatch(statePath, v.WatchPIDFile())
 			fmt.Printf("Já tem um timer rodando: %s\n", s.Desc)
 			return nil
 		} else if !errors.Is(err, timer.ErrNoTimer) {
@@ -67,6 +68,9 @@ var timerStartCmd = &cobra.Command{
 		if err := s.Save(statePath); err != nil {
 			return err
 		}
+		if err := timer.SpawnWatch(statePath, v.WatchPIDFile()); err != nil && !errors.Is(err, timer.ErrNoTimer) {
+			fmt.Fprintln(os.Stderr, "Aviso: não foi possível iniciar o watch de notificações:", err)
+		}
 		fmt.Printf("Timer iniciado: %s\n", s.Desc)
 		return nil
 	},
@@ -94,6 +98,7 @@ var timerPauseCmd = &cobra.Command{
 		}
 
 		if resumed {
+			_ = timer.SpawnWatch(statePath, v.WatchPIDFile())
 			fmt.Printf("Timer retomado: %s\n", s.Desc)
 		} else {
 			fmt.Printf("Timer pausado: %s — %dmin acumulados\n", s.Desc, s.Elapsed/60000)
@@ -122,6 +127,15 @@ var timerStopCmd = &cobra.Command{
 	},
 }
 
+var timerWatchCmd = &cobra.Command{
+	Use:   "watch",
+	Short: "Aguarda os limites do timer e envia notificações em segundo plano",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return watchTimer(v)
+	},
+}
+
 // promptText devolve a saída curta para RPROMPT.
 func promptText(s *timer.State) string { return timer.PromptText(s) }
 
@@ -131,14 +145,23 @@ func statusText(s *timer.State) string { return timer.StatusText(s) }
 // sendNotification é substituível nos testes.
 var sendNotification = timer.NotifyDesktop
 
-// maybeNotify dispara uma única notificação por limite atingido.
-func maybeNotify(s *timer.State, statePath string) {
-	message, changed := s.CheckThresholds(s.TotalMs())
-	if !changed {
+// maybeNotify dispara uma única notificação por limite atingido. A verificação
+// é compartilhada com o TUI e com o watch, para não duplicar notificações.
+func maybeNotify(statePath string) {
+	update, err := timer.ClaimThresholds(statePath, time.Now())
+	if err != nil || !update.Changed {
 		return
 	}
-	_ = sendNotification("Daylist", message)
-	_ = s.Save(statePath)
+	_ = sendNotification("Daylist", update.Message)
+}
+
+// watchTimer executa o daemon que notifica os limites com o TUI fechado.
+func watchTimer(v *vault.Vault) error {
+	return timer.Watch(timer.WatchOptions{
+		StatePath: v.StateFile(),
+		PIDPath:   v.WatchPIDFile(),
+		Notify:    sendNotification,
+	})
 }
 
 func statusTimer(v *vault.Vault, prompt bool) error {
@@ -153,7 +176,7 @@ func statusTimer(v *vault.Vault, prompt bool) error {
 	if err != nil {
 		return err
 	}
-	maybeNotify(s, v.StateFile())
+	maybeNotify(v.StateFile())
 	if prompt {
 		fmt.Print(promptText(s))
 		return nil
@@ -194,7 +217,7 @@ func stopTimer(v *vault.Vault) error {
 		fmt.Println(err)
 		return nil
 	case errors.Is(err, timer.ErrAlreadyRecorded):
-		if rmErr := os.Remove(statePath); rmErr != nil {
+		if clearErr := timer.ClearState(statePath, v.WatchPIDFile()); clearErr != nil {
 			fmt.Println("Aviso: não foi possível remover o estado do timer.")
 		}
 		fmt.Println("O tempo já estava registrado nesta linha; estado do timer removido.")
@@ -203,7 +226,7 @@ func stopTimer(v *vault.Vault) error {
 		return err // o estado é mantido, nada se perde
 	}
 
-	if err := os.Remove(statePath); err != nil {
+	if clearErr := timer.ClearState(statePath, v.WatchPIDFile()); clearErr != nil {
 		fmt.Println("Aviso: não foi possível remover o estado do timer.")
 	}
 	fmt.Printf("Timer parado: %s — %dmin\n", s.Desc, mins)
@@ -213,6 +236,6 @@ func stopTimer(v *vault.Vault) error {
 func init() {
 	timerStatusCmd.Flags().BoolVar(&statusPrompt, "prompt", false, "saída curta para RPROMPT (ex.: ⏱ 25m)")
 
-	timerCmd.AddCommand(timerStartCmd, timerPauseCmd, timerStopCmd, timerStatusCmd)
+	timerCmd.AddCommand(timerStartCmd, timerPauseCmd, timerStopCmd, timerStatusCmd, timerWatchCmd)
 	rootCmd.AddCommand(timerCmd)
 }

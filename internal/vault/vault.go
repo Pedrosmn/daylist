@@ -79,6 +79,12 @@ func (v *Vault) StateFile() string {
 	return filepath.Join(v.Path, ".daylist-timer-state.json")
 }
 
+// WatchPIDFile guarda o PID do daemon `timer watch`, para garantir instância
+// única e permitir encerrá-lo no `timer stop`.
+func (v *Vault) WatchPIDFile() string {
+	return filepath.Join(v.Path, ".daylist-timer-watch.pid")
+}
+
 // --- Obsidian ---
 
 // OpenNote abre a daylist do dia no Obsidian.

@@ -55,6 +55,9 @@ func TestTimerStopUsesStateDaylist(t *testing.T) {
 	if err := s.Save(v.StateFile()); err != nil {
 		t.Fatalf("Save do estado: %v", err)
 	}
+	if err := os.WriteFile(v.WatchPIDFile(), []byte("99999999\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile do PID: %v", err)
+	}
 
 	if err := stopTimer(v); err != nil {
 		t.Fatalf("stopTimer: %v", err)
@@ -71,6 +74,9 @@ func TestTimerStopUsesStateDaylist(t *testing.T) {
 
 	if _, err := os.Stat(v.StateFile()); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("estado do timer não foi removido após sucesso: err = %v", err)
+	}
+	if _, err := os.Stat(v.WatchPIDFile()); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("PID do watch não foi removido após o stop: err = %v", err)
 	}
 	if _, err := os.Stat(v.DaylistFile(time.Now())); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("daylist de hoje foi criada/alterada indevidamente: err = %v", err)
@@ -326,7 +332,7 @@ func TestStatusTimerNotifiesOncePerLimit(t *testing.T) {
 	v := newTestVault(t)
 	s := &timer.State{
 		Desc:       "estudar",
-		Paused:     true,
+		Start:      time.Now().UnixMilli(),
 		Elapsed:    (4 * time.Minute).Milliseconds(),
 		MinMinutes: 5,
 		MaxMinutes: 15,
@@ -351,6 +357,7 @@ func TestStatusTimerNotifiesOncePerLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+	loaded.Start = time.Now().UnixMilli()
 	loaded.Elapsed = (5 * time.Minute).Milliseconds()
 	if err := loaded.Save(v.StateFile()); err != nil {
 		t.Fatalf("Save no mínimo: %v", err)
@@ -368,6 +375,7 @@ func TestStatusTimerNotifiesOncePerLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+	loaded.Start = time.Now().UnixMilli()
 	loaded.Elapsed = (15 * time.Minute).Milliseconds()
 	if err := loaded.Save(v.StateFile()); err != nil {
 		t.Fatalf("Save no máximo: %v", err)
@@ -379,6 +387,36 @@ func TestStatusTimerNotifiesOncePerLimit(t *testing.T) {
 	runStatus()
 	if len(calls) != 2 {
 		t.Fatalf("notificação de máximo repetida: %q", calls)
+	}
+}
+
+func TestStatusTimerPausedDoesNotNotify(t *testing.T) {
+	oldNotify := sendNotification
+	t.Cleanup(func() { sendNotification = oldNotify })
+
+	called := false
+	sendNotification = func(title, body string) error {
+		called = true
+		return nil
+	}
+
+	v := newTestVault(t)
+	s := &timer.State{
+		Desc:       "estudar",
+		Paused:     true,
+		Elapsed:    (5 * time.Minute).Milliseconds(),
+		MinMinutes: 5,
+		MaxMinutes: 15,
+	}
+	if err := s.Save(v.StateFile()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if _, err := captureStdout(t, func() error { return statusTimer(v, false) }); err != nil {
+		t.Fatalf("statusTimer: %v", err)
+	}
+	if called {
+		t.Error("timer pausado não deveria notificar")
 	}
 }
 
@@ -416,6 +454,22 @@ func TestStatusTimerPromptRunning(t *testing.T) {
 func TestStatusPromptFlagRegistered(t *testing.T) {
 	if timerStatusCmd.Flags().Lookup("prompt") == nil {
 		t.Fatal("flag --prompt não registrada em timer status")
+	}
+}
+
+func TestTimerWatchCommandRegistered(t *testing.T) {
+	if timerWatchCmd.Name() != "watch" {
+		t.Errorf("comando = %q, want watch", timerWatchCmd.Name())
+	}
+}
+
+func TestTimerWatchNoState(t *testing.T) {
+	v := newTestVault(t)
+	if err := watchTimer(v); err != nil {
+		t.Fatalf("watchTimer sem estado: %v", err)
+	}
+	if _, err := os.Stat(v.WatchPIDFile()); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("arquivo de PID não removido: err = %v", err)
 	}
 }
 

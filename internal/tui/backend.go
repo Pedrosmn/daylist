@@ -38,6 +38,8 @@ type Backend interface {
 	SaveTimer(*timer.State) error
 	FinishTimer(*timer.State) (int64, error)
 	ClearTimer() error
+	StartTimerWatch() error
+	ClaimThresholds(time.Time) (*timer.State, string, bool, error)
 	Notify(title, body string) error
 }
 
@@ -157,11 +159,25 @@ func (b *RealBackend) FinishTimer(state *timer.State) (int64, error) {
 }
 
 func (b *RealBackend) ClearTimer() error {
-	err := os.Remove(b.Vault.StateFile())
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
+	return timer.ClearState(b.Vault.StateFile(), b.Vault.WatchPIDFile())
+}
+
+// StartTimerWatch garante o daemon de notificação para o timer em andamento.
+func (b *RealBackend) StartTimerWatch() error {
+	return timer.SpawnWatch(b.Vault.StateFile(), b.Vault.WatchPIDFile())
+}
+
+// ClaimThresholds verifica e persiste os limites de forma atômica, para o TUI
+// não duplicar a notificação do watch.
+func (b *RealBackend) ClaimThresholds(now time.Time) (*timer.State, string, bool, error) {
+	update, err := timer.ClaimThresholds(b.Vault.StateFile(), now)
+	if errors.Is(err, timer.ErrNoTimer) {
+		return nil, "", false, nil
 	}
-	return err
+	if err != nil {
+		return nil, "", false, err
+	}
+	return update.State, update.Message, update.Changed, nil
 }
 
 func (b *RealBackend) Notify(title, body string) error {
