@@ -611,21 +611,29 @@ func TestAddExtraHabitFromWeeklist(t *testing.T) {
 	}
 }
 
-func TestPreviewShowsAlwaysTotalAndCreates(t *testing.T) {
+func TestPreviewShowsFullDaylistTotalAndCreates(t *testing.T) {
 	fake := newFake("")
 	fake.noteExists = false
+	content := `2026-11-05 08:00
+
+# Tasks
+
+- [ ] 20 min (I) - tarefa
+
+---
+# Hábitos
+
+## Rotina
+- [ ] 5 min () - Fio dental
+`
 	plan := &planner.Plan{
-		Target: fake.now,
-		Week:   "2026-W45",
-		Always: []daylist.Resolved{{
-			Item:      daylist.Item{Section: "Hábitos", Desc: "Fio dental", Always: true},
-			FinalTime: "5 min",
-		}},
+		Target:   fake.now,
+		Week:     "2026-W45",
 		TotalMin: 125,
 		TotalMax: 125,
 		HasTotal: true,
 		LimitMin: 8 * 60,
-		Content:  "conteúdo novo\n",
+		Content:  content,
 	}
 	fake.plan = plan
 	m := New(fake)
@@ -636,7 +644,13 @@ func TestPreviewShowsAlwaysTotalAndCreates(t *testing.T) {
 		t.Fatalf("mode = %v, want preview", m.mode)
 	}
 	view := m.View()
-	for _, want := range []string{"Prévia da daylist", "Fio dental", "Tempo planejado: 2h05"} {
+	for _, want := range []string{
+		"Prévia da daylist",
+		"- [ ] 20 min (I) - tarefa",
+		"## Rotina",
+		"- [ ] 5 min () - Fio dental",
+		"Tempo planejado: 2h05",
+	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("prévia não contém %q:\n%s", want, view)
 		}
