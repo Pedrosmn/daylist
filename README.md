@@ -257,10 +257,10 @@ concluídos, motivações e o status do timer.
 
 A criação da daylist (de hoje com `n` ou de amanhã com `N`) suspende o TUI e
 executa o wizard normal no terminal.
-Antes de gravar, o TUI mostra uma prévia com os hábitos `#always` que entrarão
-automaticamente, o tempo planejado e um alerta quando o dia passa do limite
-configurado em `DAYLIST_DAY_LIMIT` (padrão de 8h). `Enter`/`s` grava e `Esc`
-cancela sem criar a nota.
+Antes de gravar, o TUI mostra uma prévia com o conteúdo completo que será
+gravado — incluindo os hábitos `#always` —, o tempo planejado e um alerta
+quando o dia passa do limite configurado em `DAYLIST_DAY_LIMIT` (padrão de 8h).
+`Enter`/`s` grava e `Esc` cancela sem criar a nota.
 
 O hábito Extra é escolhido entre os hábitos pendentes da weeklist e entra na
 categoria original de `# Hábitos`, contando no feedback. A task Extra vai para

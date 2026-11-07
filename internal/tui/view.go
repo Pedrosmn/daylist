@@ -186,16 +186,12 @@ func (m Model) previewView() string {
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString(styleHeading.Render("Hábitos #always"))
-	b.WriteString("\n")
-	if len(plan.Always) == 0 {
-		b.WriteString("  nenhum\n")
+	content := strings.TrimRight(plan.Content, "\n")
+	if content == "" {
+		b.WriteString("  nenhum item\n")
 	} else {
-		for _, item := range plan.Always {
-			b.WriteString("  - ")
-			b.WriteString(resolvedText(item))
-			b.WriteString("\n")
-		}
+		b.WriteString(content)
+		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")
@@ -246,21 +242,6 @@ func (m Model) closeView() string {
 	b.WriteString("\n\n")
 	b.WriteString(styleHelp.Render("esc/enter volta"))
 	return b.String()
-}
-
-func resolvedText(item daylist.Resolved) string {
-	parts := make([]string, 0, 2)
-	if item.FinalTime != "" {
-		parts = append(parts, item.FinalTime)
-	}
-	if item.FinalFlag != "" {
-		parts = append(parts, "("+item.FinalFlag+")")
-	}
-	text := strings.Join(parts, " ")
-	if text != "" {
-		text += " - "
-	}
-	return text + item.Desc
 }
 
 func (m Model) habitPickerView() string {

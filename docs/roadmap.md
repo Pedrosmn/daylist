@@ -66,8 +66,9 @@ diário com prévia antes da criação e fechamento do dia somente leitura.
   editar motivação, desfazer a última edição, fechar o dia e abrir a nota no
   Obsidian.
 - A criação da daylist reutiliza o wizard atual, suspendendo o TUI, e mostra uma
-  prévia com os hábitos `#always`, o total planejado e alerta de sobrecarga
-  (`DAYLIST_DAY_LIMIT`, padrão de 8h).
+  prévia com o conteúdo completo que será gravado — incluindo os hábitos
+  `#always` —, o total planejado e alerta de sobrecarga (`DAYLIST_DAY_LIMIT`,
+  padrão de 8h).
 - “Fechar o dia” mostra planejado vs. real, concluídos e pendentes, sem alterar
   a nota nem copiar pendentes para amanhã.
 - `#always` é exclusivo de hábitos. O hábito marcado é copiado para a próxima
