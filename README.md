@@ -79,6 +79,8 @@ Fleeting Notes/Daily/Days/YYYY-MM-DD.md
 Fleeting Notes/Daily/weeklists/YYYY-Www/weeklist.md
 Fleeting Notes/Daily/weeklists/YYYY-Www/feedback.md
 .daylist-timer-state.json
+.daylist-timer-state.json.lock
+.daylist-timer-watch.pid
 ```
 
 ## Comandos
@@ -154,6 +156,7 @@ daylist timer pause
 daylist timer status
 daylist timer status --prompt
 daylist timer stop
+daylist timer watch
 ```
 
 O timer grava o tempo na daylist em que foi iniciado, mesmo que o dia vire. O
@@ -164,6 +167,13 @@ O tempo planejado do item define os limites mínimo e máximo. `5/15 min` usa 5 
 15; `30 min` usa 30 e 30; `ST`/`xST` não têm limites. O status avisa ao atingir
 cada limite, mas não para o timer automaticamente. Se `notify-send` estiver
 disponível, uma notificação desktop é disparada uma vez por limite.
+
+`timer start` inicia `daylist timer watch` em segundo plano, sem terminal e sem
+bloquear o comando. O watch usa `.daylist-timer-watch.pid` para garantir
+instância única, notifica no máximo uma vez por limite e encerra quando o timer
+some ou o máximo é atingido. `timer stop` encerra o watch. Timer pausado não
+notifica; ao retomar, o watch recalcula o próximo limite. O transporte de
+notificação continua sendo o `notify-send` no Linux.
 
 `status --prompt` imprime uma saída curta, útil para prompt do shell:
 

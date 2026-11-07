@@ -23,11 +23,13 @@ type fakeBackend struct {
 	weekExists  bool
 	habits      []daylist.Item
 
-	timer     *timer.State
-	timerSave int
-	finishMin int64
-	finishErr error
-	cleared   int
+	timer       *timer.State
+	timerSave   int
+	finishMin   int64
+	finishErr   error
+	cleared     int
+	watchStarts int
+	watchStops  int
 
 	plan           *planner.Plan
 	planErr        error
@@ -180,8 +182,25 @@ func (f *fakeBackend) FinishTimer(*timer.State) (int64, error) {
 
 func (f *fakeBackend) ClearTimer() error {
 	f.cleared++
+	f.watchStops++
 	f.timer = nil
 	return nil
+}
+
+func (f *fakeBackend) StartTimerWatch() error {
+	f.watchStarts++
+	return nil
+}
+
+func (f *fakeBackend) ClaimThresholds(now time.Time) (*timer.State, string, bool, error) {
+	if f.timer == nil {
+		return nil, "", false, nil
+	}
+	if f.timer.Paused {
+		return f.timer, "", false, nil
+	}
+	message, changed := f.timer.CheckThresholds(f.timer.TotalMsAt(now.UnixMilli()))
+	return f.timer, message, changed, nil
 }
 
 func (f *fakeBackend) Notify(title, body string) error {
@@ -660,6 +679,9 @@ func TestTimerStartPauseStop(t *testing.T) {
 	if fake.timer == nil || fake.timerSave != 1 {
 		t.Fatalf("timer não iniciado: %+v", fake.timer)
 	}
+	if fake.watchStarts != 1 {
+		t.Errorf("watch não iniciado junto com o timer: starts=%d", fake.watchStarts)
+	}
 	if !strings.Contains(m.st, "Timer iniciado") {
 		t.Errorf("status = %q", m.st)
 	}
@@ -673,6 +695,9 @@ func TestTimerStartPauseStop(t *testing.T) {
 	if fake.cleared != 1 || m.timer != nil {
 		t.Errorf("timer não foi parado: cleared=%d timer=%+v", fake.cleared, m.timer)
 	}
+	if fake.watchStops != 1 {
+		t.Errorf("watch não foi encerrado junto com o timer: stops=%d", fake.watchStops)
+	}
 	if !strings.Contains(m.st, "Timer parado") || !strings.Contains(m.st, "7min") {
 		t.Errorf("status = %q", m.st)
 	}
@@ -682,8 +707,7 @@ func TestTimerThresholdsAreSharedAndNotifiedOnce(t *testing.T) {
 	fake := newFake("# Tasks\n")
 	fake.timer = &timer.State{
 		Desc:       "tarefa",
-		Paused:     true,
-		Elapsed:    5 * time.Minute.Milliseconds(),
+		Start:      fake.now.Add(-5 * time.Minute).UnixMilli(),
 		MinMinutes: 5,
 		MaxMinutes: 15,
 	}
@@ -706,6 +730,25 @@ func TestTimerThresholdsAreSharedAndNotifiedOnce(t *testing.T) {
 	m.checkThresholds()
 	if len(fake.notified) != 1 {
 		t.Errorf("notificação repetida: %q", fake.notified)
+	}
+}
+
+func TestTimerThresholdsPausedDoNotNotify(t *testing.T) {
+	fake := newFake("# Tasks\n")
+	fake.timer = &timer.State{
+		Desc:       "tarefa",
+		Paused:     true,
+		Elapsed:    (5 * time.Minute).Milliseconds(),
+		MinMinutes: 5,
+		MaxMinutes: 15,
+	}
+	m := New(fake)
+
+	if cmd := m.checkThresholds(); cmd != nil {
+		t.Fatal("timer pausado não deveria agendar notificação")
+	}
+	if len(fake.notified) != 0 {
+		t.Errorf("notificações com timer pausado = %q", fake.notified)
 	}
 }
 

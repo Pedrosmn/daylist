@@ -95,7 +95,12 @@ func New(backend Backend) *Model {
 }
 
 // Init inicia o relógio do cabeçalho e do timer.
-func (m *Model) Init() tea.Cmd { return tickCmd() }
+func (m *Model) Init() tea.Cmd {
+	if m.timer != nil {
+		_ = m.backend.StartTimerWatch()
+	}
+	return tickCmd()
+}
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
@@ -689,6 +694,9 @@ func (m *Model) startTimer() {
 		m.err = "não foi possível iniciar o timer: " + err.Error()
 		return
 	}
+	if err := m.backend.StartTimerWatch(); err != nil && !errors.Is(err, timer.ErrNoTimer) {
+		m.err = "timer iniciado, mas não foi possível iniciar as notificações: " + err.Error()
+	}
 
 	m.timer = state
 	m.st = "Timer iniciado: " + state.Desc
@@ -751,11 +759,17 @@ func (m *Model) checkThresholds() tea.Cmd {
 	if m.timer == nil {
 		return nil
 	}
-	message, changed := m.timer.CheckThresholds(m.timer.TotalMs())
+	state, message, changed, err := m.backend.ClaimThresholds(m.now)
+	if err != nil {
+		m.err = "não foi possível verificar os limites do timer: " + err.Error()
+		return nil
+	}
+	if state != nil {
+		m.timer = state
+	}
 	if !changed {
 		return nil
 	}
-	_ = m.backend.SaveTimer(m.timer)
 	m.st = message
 	return func() tea.Msg {
 		_ = m.backend.Notify("Daylist", message)

@@ -103,6 +103,16 @@ func Load(path string) (*State, error) {
 }
 
 func (s *State) Save(path string) error {
+	release, err := lockFile(path + ".lock")
+	if err != nil {
+		return err
+	}
+	defer release()
+	return s.saveLocked(path)
+}
+
+// saveLocked grava o estado supondo que o chamador já detém o lock do arquivo.
+func (s *State) saveLocked(path string) error {
 	data, err := json.Marshal(s)
 	if err != nil {
 		return err
@@ -155,11 +165,15 @@ func (s *State) Toggle() bool {
 	return true
 }
 
-func (s *State) TotalMs() int64 {
+func (s *State) TotalMs() int64 { return s.TotalMsAt(nowMs()) }
+
+// TotalMsAt é como TotalMs, mas usa o instante informado (epoch ms). O watch
+// injeta o relógio para poder ser testado sem esperar o tempo real.
+func (s *State) TotalMsAt(now int64) int64 {
 	if s.Paused {
 		return s.Elapsed
 	}
-	return s.Elapsed + nowMs() - s.Start
+	return s.Elapsed + now - s.Start
 }
 
 // RoundedMinutes converte milissegundos em minutos arredondados para o mais
