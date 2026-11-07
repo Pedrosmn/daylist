@@ -474,16 +474,180 @@ func TestEditMotivation(t *testing.T) {
 	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa\n> antiga\n")
 	m := New(fake)
 
-	m = updateModel(t, m, keyRunes("e"))
+	m = updateModel(t, m, keyRunes("m"))
 	if m.mode != modeForm || m.form == nil {
 		t.Fatalf("mode = %v, form = %+v", m.mode, m.form)
 	}
-	m.form.inputs[0].SetValue("nova motivação")
+	m.form.fields[0].SetValue("nova motivação")
 	m = updateModel(t, m, keyType(tea.KeyEnter))
 
 	if !strings.Contains(fake.savedNote, "> nova motivação") ||
 		strings.Contains(fake.savedNote, "> antiga") {
 		t.Errorf("motivação não foi atualizada:\n%s", fake.savedNote)
+	}
+}
+
+func TestMotivationShortcutTitleAndContextualHelp(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa\n> antiga\n")
+	m := New(fake)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 70, Height: 24})
+
+	m = updateModel(t, m, keyRunes("e"))
+	if m.mode == modeForm {
+		t.Fatal("e não deveria mais abrir o formulário de motivação")
+	}
+
+	mainView := m.View()
+	if !strings.Contains(mainView, "m motivação") {
+		t.Errorf("rodapé da tela principal não anuncia m:\n%s", mainView)
+	}
+
+	m = updateModel(t, m, keyRunes("?"))
+	helpView := m.View()
+	if !strings.Contains(helpView, "m  editar ou remover a motivação") {
+		t.Errorf("ajuda não anuncia m:\n%s", helpView)
+	}
+	if strings.Contains(helpView, "e  editar ou remover a motivação") {
+		t.Errorf("ajuda ainda anuncia e:\n%s", helpView)
+	}
+	m = updateModel(t, m, keyRunes("x"))
+
+	m = updateModel(t, m, keyRunes("m"))
+	if m.mode != modeForm || m.form == nil {
+		t.Fatalf("mode = %v, form = %+v", m.mode, m.form)
+	}
+
+	view := m.View()
+	for _, want := range []string{
+		"Motivação · 10 min (I) - tarefa",
+		"enter salva · esc cancela",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("formulário não contém %q:\n%s", want, view)
+		}
+	}
+	for _, unwanted := range []string{
+		"Motivação: ",
+		"tab/↑↓ campo",
+		"←/→ prioridade",
+	} {
+		if strings.Contains(view, unwanted) {
+			t.Errorf("formulário não deveria conter %q:\n%s", unwanted, view)
+		}
+	}
+}
+
+func TestExtraTaskKeepsFullFormHelp(t *testing.T) {
+	fake := newFake("# Tasks\n")
+	m := New(fake)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 70, Height: 24})
+	m = updateModel(t, m, keyRunes("a"))
+
+	view := m.View()
+	for _, want := range []string{"tab/↑↓ campo", "←/→ prioridade", "enter/ctrl+s salva"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("rodapé do Extra task não contém %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestMotivationFormWrapsVisuallyAndSavesSingleLine(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa\n")
+	m := New(fake)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 40, Height: 24})
+	m = updateModel(t, m, keyRunes("m"))
+
+	text := "uma motivação bem longa para confirmar que o texto desce de linha sem rolar"
+	m = updateModel(t, m, keyRunes(text))
+
+	view := m.View()
+	if strings.Contains(view, text) {
+		t.Errorf("o texto não quebrou na largura disponível:\n%s", view)
+	}
+	for _, want := range []string{"uma motivação", "rolar"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("texto quebrado perdeu %q:\n%s", want, view)
+		}
+	}
+
+	m = updateModel(t, m, keyType(tea.KeyEnter))
+	if m.mode != modeMain {
+		t.Fatalf("mode = %v, want main; err=%q", m.mode, m.err)
+	}
+	if !strings.Contains(fake.savedNote, "> "+text) {
+		t.Errorf("motivação não foi gravada em uma linha:\n%s", fake.savedNote)
+	}
+}
+
+func TestExtraTaskMotivationWraps(t *testing.T) {
+	fake := newFake("# Tasks\n")
+	m := New(fake)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 44, Height: 24})
+	m = updateModel(t, m, keyRunes("a"))
+
+	text := "motivação do extra task longa o bastante para descer de linha"
+	m.form.fields[3].SetValue(text)
+	m.form.layout(m.formContentWidth())
+
+	view := m.View()
+	if strings.Contains(view, text) {
+		t.Errorf("a motivação do Extra task não quebrou:\n%s", view)
+	}
+	for _, want := range []string{"motivação do extra", "linha"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("texto quebrado perdeu %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestMotivationFormEscCancelsWithoutSaving(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa\n> antiga\n")
+	m := New(fake)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 70, Height: 24})
+	m = updateModel(t, m, keyRunes("m"))
+	m = updateModel(t, m, keyRunes("alterada"))
+
+	m = updateModel(t, m, keyType(tea.KeyEsc))
+	if m.mode != modeConfirm {
+		t.Fatalf("mode = %v, want confirmação", m.mode)
+	}
+	m = updateModel(t, m, keyRunes("s"))
+
+	if m.mode != modeMain || fake.noteSaves != 0 {
+		t.Fatalf("cancelamento gravou: mode=%v saves=%d", m.mode, fake.noteSaves)
+	}
+	if !strings.Contains(fake.noteContent, "> antiga") {
+		t.Errorf("motivação original foi alterada:\n%s", fake.noteContent)
+	}
+}
+
+func TestMainViewWrapsMotivation(t *testing.T) {
+	motivation := "uma motivação bem longa que precisa aparecer completa mesmo em terminal estreito"
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa\n> " + motivation + "\n")
+	m := New(fake)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 40, Height: 24})
+
+	view := m.View()
+	if strings.Contains(view, motivation) {
+		t.Errorf("a motivação não quebrou na largura do terminal:\n%s", view)
+	}
+	for _, want := range []string{"uma motivação", "completa", "estreito"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("motivação quebrada perdeu %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestMainViewWrapsMultilineMotivation(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa\n> primeira linha longa\n> segunda linha longa\n")
+	m := New(fake)
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 44, Height: 24})
+
+	view := m.View()
+	for _, want := range []string{"primeira linha longa", "segunda linha longa"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("motivação com múltiplas linhas perdeu %q:\n%s", want, view)
+		}
 	}
 }
 

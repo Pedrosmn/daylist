@@ -241,7 +241,7 @@ concluídos, motivações e o status do timer.
 | `s` | iniciar o timer no item selecionado |
 | `p` | pausar ou retomar o timer |
 | `x` | parar o timer e gravar o tempo na daylist de origem |
-| `e` | editar ou remover a motivação do item |
+| `m` | editar ou remover a motivação do item |
 | `a` | adicionar Extra task |
 | `A` | adicionar hábito Extra escolhido da weeklist |
 | `W` | ver a weeklist atual e alternar `#always` em hábitos |
@@ -265,8 +265,9 @@ quando o dia passa do limite configurado em `DAYLIST_DAY_LIMIT` (padrão de 8h).
 O hábito Extra é escolhido entre os hábitos pendentes da weeklist e entra na
 categoria original de `# Hábitos`, contando no feedback. A task Extra vai para
 `# Extra`. A motivação aparece abaixo do item e também é mostrada ao iniciar o
-timer. O aviso de tempo mínimo/máximo do timer usa as mesmas regras e mensagens
-do CLI.
+timer. O atalho `m` abre um formulário que identifica o item, quebra o texto na
+largura do terminal e grava sempre uma única linha. O aviso de tempo
+mínimo/máximo do timer usa as mesmas regras e mensagens do CLI.
 
 `F` abre o resumo de fechamento do dia com tempo planejado, tempo real já
 registrado, concluídos e pendentes. Fechar o dia apenas mostra o resumo: nada é

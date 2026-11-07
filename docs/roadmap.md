@@ -18,13 +18,18 @@
 > Atualizado em 2026-11-06: ciclo do wizard em Bubble Tea entregue (`B1–B12`);
 > UI nativa inline com tema compartilhado em `internal/theme`, fzf removido e
 > fallback numerado mantido para execuções sem TTY.
+> Atualizado em 2026-11-07: próximo ciclo de UX do TUI definido — atalho `m`,
+> wrap de motivação, barra do timer, `timer watch` e daylist de ontem; tarefas
+> em [docs/backlog.md](backlog.md).
+> Atualizado em 2026-11-07: `M1–M6` concluídos (atalho `m`, formulário de
+> motivação contextual e wrap de texto na edição e na tela principal).
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
 
 ## Estado atual
 
-O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim. O TUI em Bubble Tea cobre a daylist de hoje, timer, Extra, motivação, weeklist, undo, prévia da daylist e fechamento do dia, com backend falso nos testes. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O wizard usa a mesma UI nativa em Bubble Tea/Lipgloss, desenha em `stderr`, deixa resumos compactos no histórico e mantém fallback numerado sem TTY. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
+O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim. O TUI em Bubble Tea cobre a daylist de hoje, timer, Extra, motivação, weeklist, undo, prévia da daylist e fechamento do dia, com backend falso nos testes. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O wizard usa a mesma UI nativa em Bubble Tea/Lipgloss, desenha em `stderr`, deixa resumos compactos no histórico e mantém fallback numerado sem TTY. O ciclo de UX do TUI já entregou o atalho `m` e o wrap da motivação na edição e na tela principal; faltam a barra do timer, a notificação com o TUI fechado via `timer watch` e a navegação para a daylist de ontem. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
 
 | Comando | Estado |
 |---|---|
@@ -103,6 +108,30 @@ stdout redirecionado, `Ctrl+C` e execução sem TTY.
   única tela fica para um ciclo posterior.
 - Tarefas detalhadas: `B1–B12` em [docs/backlog.md](backlog.md).
 
+## 🚧 Próximo ciclo — Ajustes de UX do TUI
+
+Status em 2026-11-07: `M1–M6` concluídos. As tarefas detalhadas estão em
+[docs/backlog.md](backlog.md): `P1–P3` (barra do timer), `N1–N5` (notificação
+com o TUI fechado), `Y1–Y6` (daylist de ontem) e `DOC1–DOC3` (documentação e
+validação) seguem planejados.
+
+- `m` substitui `e` para editar ou remover a motivação; `e` deixa de existir.
+- O formulário de motivação mostra o nome do item, usa rodapé contextual e tem
+  wrap visual: ao chegar na largura, o texto desce uma linha em vez de rolar
+  lateralmente. `Enter` salva.
+- A motivação na tela principal também quebra pela largura do terminal, sem
+  cortar o texto.
+- Com timer rodando, a tela principal mostra uma barra do tempo decorrido até o
+  máximo planejado, com marcação no mínimo. Sem faixa conhecida, a barra fica
+  oculta.
+- A notificação de mínimo/máximo funciona com o TUI fechado por meio do daemon
+  `daylist timer watch`, iniciado automaticamente, com instância única e
+  encerramento ao parar o timer.
+- O TUI ganha a daylist de ontem: `y` alterna entre hoje e ontem; é possível
+  ver, marcar/desmarcar itens e adicionar Extra. Timer e edição de motivação
+  ficam desabilitados em ontem.
+- Navegar por qualquer data e editar motivação em dias passados ficam adiados.
+
 ## 🌿 Fluxo de trabalho
 
 A partir de 2026-10-30, toda implementação nova começa em uma branch criada
@@ -144,6 +173,11 @@ As correções 1–6 do roadmap foram implementadas e cobertas por testes:
 - O wizard não terá uma etapa Extra separada; a inclusão de Extra é feita pelo
   TUI.
 - O timer sinaliza mínimo e máximo do tempo planejado, sem parar automaticamente.
+- Próximo ciclo: atalho `m`, wrap de motivação, barra do timer, `timer watch`
+  para notificar com o TUI fechado e daylist de ontem (ver, marcar/desmarcar
+  itens e adicionar Extra).
+- Navegação por qualquer data e edição de motivação em dias passados ficam
+  adiadas.
 
 ---
 
@@ -183,6 +217,10 @@ Ambos têm `--dry-run` e `--print-path`, usam escrita atômica e ignoram daylist
 
 - ✅ `timer status`, `timer status --prompt` e `timer` sem subcomando (entregues em 2026-10-29).
 - ✅ Aviso visual no status/prompt ao atingir o mínimo e o máximo do tempo planejado; notificação desktop via `notify-send`. O máximo apenas sinaliza, sem auto-stop.
+- 🚧 Notificação com o TUI fechado: daemon `daylist timer watch`, iniciado
+  automaticamente e com instância única, planejado em `N1–N5` no backlog.
+- 🚧 Barra de progresso do timer na tela principal, com marcação no mínimo e
+  máximo no fim, planejada em `P1–P3` no backlog.
 - Estado do timer vive em `.daylist-timer-state.json` na raiz do vault; mover para `$XDG_STATE_HOME/daylist/` está no backlog.
 
 ---
@@ -222,6 +260,7 @@ o roadmap focado no escopo atual.
 5. **Contínuo**: ✅ README/Makefile, CI, testes de `cmd` e versionamento do binário.
 6. ✅ **Ciclo anterior**: TUI entregue com prévia da daylist e fechamento do dia — tarefas em [docs/backlog.md](backlog.md).
 7. ✅ **Médio**: migrar o wizard para Bubble Tea e aposentar o fzf — tarefas `B1–B12` em [docs/backlog.md](backlog.md).
+8. 🚧 **Em andamento**: ajustes de UX do TUI — `M1–M6` concluídos; `P1–P3`, `N1–N5`, `Y1–Y6` e `DOC1–DOC3` em [docs/backlog.md](backlog.md).
 
 ---
 
