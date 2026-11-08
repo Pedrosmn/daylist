@@ -27,13 +27,17 @@
 > principal, com mínimo, máximo e casos de pausa e terminal estreito).
 > Atualizado em 2026-11-07: `N1–N5` concluídos (`daylist timer watch` com
 > instância única, notificação única por limite e pausa respeitada).
+> Atualizado em 2026-11-08: `Y1–Y6` concluídos (daylist de ontem com alternância
+> `y`/`t`/`Esc`, edição no arquivo da data, undo por dia e restrições de timer
+> e motivação). A documentação e a validação final (`DOC1–DOC3`) seguem
+> pendentes.
 > As referências `arquivo:linha` correspondem ao commit da revisão; podem mudar depois.
 >
 > Itens adiados e ideias de produto: [docs/backlog.md](backlog.md).
 
 ## Estado atual
 
-O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim. O TUI em Bubble Tea cobre a daylist de hoje, timer, Extra, motivação, weeklist, undo, prévia da daylist e fechamento do dia, com backend falso nos testes. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O wizard usa a mesma UI nativa em Bubble Tea/Lipgloss, desenha em `stderr`, deixa resumos compactos no histórico e mantém fallback numerado sem TTY. O ciclo de UX do TUI já entregou o atalho `m`, o wrap da motivação, a barra do timer e a notificação com o TUI fechado via `timer watch`; falta a navegação para a daylist de ontem. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
+O sistema está sólido: separação `cmd/` (comandos Cobra) e `internal/` (regras), escrita atômica das notas e do estado do timer, testes nas partes de parsing/seleção/timer/vault e um wizard por etapas com navegação Vim. O TUI em Bubble Tea cobre a daylist de hoje, timer, Extra, motivação, weeklist, undo, prévia da daylist e fechamento do dia, com backend falso nos testes. `week` e `feedback` agora são gerados em Go, sem QuickAdd; o Obsidian fica só para abrir/editar notas. O wizard usa a mesma UI nativa em Bubble Tea/Lipgloss, desenha em `stderr`, deixa resumos compactos no histórico e mantém fallback numerado sem TTY. O ciclo de UX do TUI já entregou o atalho `m`, o wrap da motivação, a barra do timer, a notificação com o TUI fechado via `timer watch` e a navegação para a daylist de ontem. O que falta está em melhorias de UX e engenharia; itens adiados estão em `docs/backlog.md`.
 
 | Comando | Estado |
 |---|---|
@@ -114,9 +118,9 @@ stdout redirecionado, `Ctrl+C` e execução sem TTY.
 
 ## 🚧 Próximo ciclo — Ajustes de UX do TUI
 
-Status em 2026-11-07: `M1–M6`, `P1–P3` e `N1–N5` concluídos. As tarefas
-detalhadas estão em [docs/backlog.md](backlog.md): `Y1–Y6` (daylist de ontem) e
-`DOC1–DOC3` (documentação e validação) seguem planejados.
+Status em 2026-11-08: `M1–M6`, `P1–P3`, `N1–N5` e `Y1–Y6` concluídos. As
+tarefas detalhadas estão em [docs/backlog.md](backlog.md): `DOC1–DOC3`
+(documentação e validação) seguem planejados.
 
 - `m` substitui `e` para editar ou remover a motivação; `e` deixa de existir.
 - O formulário de motivação mostra o nome do item, usa rodapé contextual e tem

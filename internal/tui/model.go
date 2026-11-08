@@ -81,6 +81,11 @@ type Model struct {
 	weekCursor int
 
 	undo []string
+	// Estado por data: cursor e undo pertencem à daylist visualizada. Guardar
+	// por chave evita que voltar para hoje perca a seleção ou desfaça uma
+	// edição no arquivo errado.
+	undoByDay   map[string][]string
+	cursorByDay map[string]int
 
 	width  int
 	height int
@@ -89,7 +94,14 @@ type Model struct {
 // New cria o modelo e carrega o estado inicial. Erros de leitura ficam em
 // Model.Err e podem ser exibidos pela view.
 func New(backend Backend) *Model {
-	m := &Model{backend: backend, now: backend.Today()}
+	now := backend.Today()
+	m := &Model{
+		backend:     backend,
+		now:         now,
+		day:         dateOnly(now),
+		undoByDay:   map[string][]string{},
+		cursorByDay: map[string]int{},
+	}
 	m.reload()
 	return m
 }
@@ -118,16 +130,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		now := m.backend.Today()
-		if !sameDay(now, m.day) {
-			m.reload()
-			m.st = "Novo dia: daylist de hoje recarregada."
-			if m.mode == modeWeeklist || m.mode == modeForm || m.mode == modeHabitPick ||
-				m.mode == modeConfirm || m.mode == modePreview {
-				m.form = nil
-				m.week = nil
-				m.habitChoices = nil
-				m.preview = nil
-				m.mode = modeMain
+		oldToday := dateOnly(m.now)
+		newToday := dateOnly(now)
+		if !sameDay(oldToday, newToday) {
+			if sameDay(m.day, oldToday) {
+				// Estava vendo o dia que era hoje: acompanha a virada.
+				m.switchDay(newToday)
+				m.st = "Novo dia: daylist de hoje recarregada."
+				if m.mode == modeWeeklist || m.mode == modeForm || m.mode == modeHabitPick ||
+					m.mode == modeConfirm || m.mode == modePreview || m.mode == modeClose {
+					m.form = nil
+					m.week = nil
+					m.habitChoices = nil
+					m.preview = nil
+					m.mode = modeMain
+				}
+			} else {
+				// Estava vendo ontem (ou outra data): mantém a data absoluta
+				// carregada e apenas atualiza o relógio. Isso evita que uma
+				// nota de ontem seja gravada no arquivo do novo dia.
+				m.now = now
+				m.reload()
+				m.st = "O dia virou; você continua na " + m.daylistPhrase() + "."
 			}
 		} else {
 			m.now = now
@@ -205,6 +229,10 @@ func (m *Model) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.mode = modeHelp
+	case "y":
+		m.toggleDay()
+	case "t", "esc":
+		m.goToday()
 	case "j", "down":
 		m.moveCursor(1)
 	case "k", "up":
@@ -347,13 +375,9 @@ func (m *Model) updateWeeklist(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) reload() {
 	m.now = m.backend.Today()
-	day := dateOnly(m.now)
-	if !m.day.IsZero() && !sameDay(day, m.day) {
-		// O histórico de undo pertence à daylist do dia anterior; aplicá-lo
-		// depois da virada gravaria o conteúdo antigo no dia novo.
-		m.undo = nil
+	if m.day.IsZero() {
+		m.day = dateOnly(m.now)
 	}
-	m.day = day
 	m.note = nil
 	m.items = nil
 
@@ -368,6 +392,12 @@ func (m *Model) reload() {
 	}
 	m.clampCursor()
 
+	// O timer é único e pertence ao dia de hoje. Ao visualizar ontem, o
+	// banner e os controles ficam fora da tela.
+	m.timer = nil
+	if !m.isToday() {
+		return
+	}
 	state, err := m.backend.LoadTimer()
 	if err != nil {
 		m.err = "não foi possível ler o timer: " + err.Error()
@@ -376,18 +406,133 @@ func (m *Model) reload() {
 	}
 }
 
-// ensureToday garante que a nota em memória pertence ao dia atual. Se o dia
-// virou, recarrega a daylist e devolve false para o chamador abortar a ação:
-// a linha selecionada e o formulário em andamento podem não valer mais.
-func (m *Model) ensureToday() bool {
+// isToday informa se a daylist carregada é a do relógio atual.
+func (m *Model) isToday() bool {
+	return sameDay(m.day, dateOnly(m.now))
+}
+
+func dayKey(t time.Time) string { return t.Format("2006-01-02") }
+
+// saveDayMemory guarda cursor e undo da data que está saindo da tela.
+func (m *Model) saveDayMemory() {
+	if m.day.IsZero() {
+		return
+	}
+	if m.undoByDay == nil {
+		m.undoByDay = map[string][]string{}
+	}
+	if m.cursorByDay == nil {
+		m.cursorByDay = map[string]int{}
+	}
+	key := dayKey(m.day)
+	m.cursorByDay[key] = m.cursor
+	m.undoByDay[key] = append([]string(nil), m.undo...)
+}
+
+// loadDayMemory restaura cursor e undo da data que está entrando na tela.
+func (m *Model) loadDayMemory() {
+	key := dayKey(m.day)
+	m.cursor = m.cursorByDay[key]
+	m.undo = append([]string(nil), m.undoByDay[key]...)
+}
+
+// switchDay troca a data visualizada preservando o estado de cada dia.
+func (m *Model) switchDay(day time.Time) {
+	m.saveDayMemory()
+	m.day = dateOnly(day)
+	m.loadDayMemory()
+	m.reload()
+}
+
+// toggleDay alterna entre hoje e ontem. Se a tela estiver em uma data mais
+// antiga (por exemplo, ontem antes da meia-noite), y volta para hoje.
+func (m *Model) toggleDay() {
+	today := dateOnly(m.backend.Today())
+	if sameDay(m.day, today) {
+		m.switchDay(today.AddDate(0, 0, -1))
+		if m.note == nil {
+			m.st = "A " + m.daylistPhrase() + " ainda não existe."
+		} else {
+			m.st = "Mostrando a " + m.daylistPhrase() + "."
+		}
+		return
+	}
+	m.goToday()
+}
+
+// goToday volta explicitamente para a daylist de hoje.
+func (m *Model) goToday() {
 	now := m.backend.Today()
-	if !m.day.IsZero() && sameDay(now, m.day) {
+	today := dateOnly(now)
+	if sameDay(m.day, today) {
+		m.now = now
+		return
+	}
+	m.switchDay(today)
+	if m.note == nil {
+		m.st = "A daylist de hoje ainda não existe."
+	} else {
+		m.st = "De volta à daylist de hoje."
+	}
+}
+
+// daylistPhrase descreve a data visualizada em mensagens ("daylist de hoje",
+// "daylist de ontem" ou a data absoluta).
+func (m *Model) daylistPhrase() string {
+	today := dateOnly(m.now)
+	switch {
+	case sameDay(m.day, today):
+		return "daylist de hoje"
+	case sameDay(m.day, today.AddDate(0, 0, -1)):
+		return "daylist de ontem"
+	default:
+		return "daylist de " + m.day.Format("02/01/2006")
+	}
+}
+
+// viewDateWord descreve a data visualizada em rótulos curtos.
+func (m *Model) viewDateWord() string {
+	today := dateOnly(m.now)
+	switch {
+	case sameDay(m.day, today):
+		return "hoje"
+	case sameDay(m.day, today.AddDate(0, 0, -1)):
+		return "ontem"
+	default:
+		return "de " + m.day.Format("02/01/2006")
+	}
+}
+
+// weeklistPhrase descreve a weeklist correspondente à data visualizada.
+func (m *Model) weeklistPhrase() string {
+	if m.isToday() {
+		return "weeklist atual"
+	}
+	if m.viewDateWord() == "ontem" {
+		return "weeklist da semana de ontem"
+	}
+	return "weeklist da semana " + m.viewDateWord()
+}
+
+// ensureViewedDay garante que a data visualizada continua sendo a mesma nota
+// carregada. Se o dia virou enquanto a tela mostrava "hoje", recarrega o novo
+// dia e devolve false para o chamador abortar a ação. Se a tela mostrava ontem,
+// mantém a data absoluta e permite a edição no arquivo correto.
+func (m *Model) ensureViewedDay() bool {
+	now := m.backend.Today()
+	oldToday := dateOnly(m.now)
+	newToday := dateOnly(now)
+	if !sameDay(oldToday, newToday) {
+		if sameDay(m.day, oldToday) {
+			m.switchDay(newToday)
+			m.st = "O dia virou; a daylist de hoje foi recarregada. Repita a ação."
+			return false
+		}
 		m.now = now
 		return true
 	}
-	m.reload()
-	m.st = "O dia virou; a daylist de hoje foi recarregada. Repita a ação."
-	return false
+	m.now = now
+	return true
 }
 
 func dateOnly(t time.Time) time.Time {
@@ -478,7 +623,7 @@ func (m *Model) pushUndo() {
 }
 
 func (m *Model) undoLast() {
-	if !m.ensureToday() {
+	if !m.ensureViewedDay() {
 		return
 	}
 	if len(m.undo) == 0 {
@@ -498,7 +643,7 @@ func (m *Model) undoLast() {
 }
 
 func (m *Model) toggleSelected() {
-	if !m.ensureToday() {
+	if !m.ensureViewedDay() {
 		return
 	}
 	item, ok := m.selected()
@@ -527,7 +672,11 @@ func (m *Model) toggleSelected() {
 }
 
 func (m *Model) editMotivation() {
-	if !m.ensureToday() {
+	if !m.ensureViewedDay() {
+		return
+	}
+	if !m.isToday() {
+		m.err = "edição de motivação disponível apenas na daylist de hoje."
 		return
 	}
 	item, ok := m.selected()
@@ -541,11 +690,11 @@ func (m *Model) editMotivation() {
 }
 
 func (m *Model) openExtraTask() {
-	if !m.ensureToday() {
+	if !m.ensureViewedDay() {
 		return
 	}
 	if m.note == nil {
-		m.err = "crie a daylist de hoje antes de adicionar um Extra."
+		m.err = "crie a " + m.daylistPhrase() + " antes de adicionar um Extra."
 		return
 	}
 	m.form = newExtraTaskForm()
@@ -554,25 +703,30 @@ func (m *Model) openExtraTask() {
 }
 
 func (m *Model) openExtraHabit() {
-	if !m.ensureToday() {
+	if !m.ensureViewedDay() {
 		return
 	}
 	if m.note == nil {
-		m.err = "crie a daylist de hoje antes de adicionar um Extra."
+		m.err = "crie a " + m.daylistPhrase() + " antes de adicionar um Extra."
 		return
 	}
 
-	habits, err := m.backend.WeeklistHabits()
+	habits, err := m.backend.WeeklistHabitsOn(m.day)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			m.err = "weeklist atual não encontrada; pressione c para criá-la."
+			m.err = m.weeklistPhrase() + " não encontrada"
+			if m.isToday() {
+				m.err += "; pressione c para criá-la."
+			} else {
+				m.err += "."
+			}
 			return
 		}
 		m.err = "não foi possível ler a weeklist: " + err.Error()
 		return
 	}
 	if len(habits) == 0 {
-		m.st = "Nenhum hábito pendente na weeklist atual."
+		m.st = "Nenhum hábito pendente na " + m.weeklistPhrase() + "."
 		return
 	}
 
@@ -586,9 +740,13 @@ func (m *Model) submitForm() tea.Cmd {
 	if form == nil || m.note == nil {
 		return nil
 	}
-	if !m.ensureToday() {
+	if !m.ensureViewedDay() {
 		m.form = nil
 		m.mode = modeMain
+		return nil
+	}
+	if form.kind == formMotivation && !m.isToday() {
+		form.err = "edição de motivação disponível apenas na daylist de hoje."
 		return nil
 	}
 
@@ -662,8 +820,21 @@ func (m *Model) submitForm() tea.Cmd {
 
 // --- timer ---
 
+// ensureTimerDay recusa ações de timer em qualquer data que não seja hoje. O
+// timer é único no vault e continua associado à daylist em que foi iniciado.
+func (m *Model) ensureTimerDay() bool {
+	if !m.ensureViewedDay() {
+		return false
+	}
+	if !m.isToday() {
+		m.err = "timer disponível apenas na daylist de hoje."
+		return false
+	}
+	return true
+}
+
 func (m *Model) startTimer() {
-	if !m.ensureToday() {
+	if !m.ensureTimerDay() {
 		return
 	}
 	if m.note == nil {
@@ -706,6 +877,9 @@ func (m *Model) startTimer() {
 }
 
 func (m *Model) toggleTimer() {
+	if !m.ensureTimerDay() {
+		return
+	}
 	if m.timer == nil {
 		m.st = "Nenhum timer rodando."
 		return
@@ -725,6 +899,9 @@ func (m *Model) toggleTimer() {
 }
 
 func (m *Model) stopTimer() {
+	if !m.ensureTimerDay() {
+		return
+	}
 	if m.timer == nil {
 		m.st = "Nenhum timer rodando."
 		return
@@ -825,8 +1002,11 @@ func (m *Model) daylistExistsMessage(target time.Time) string {
 }
 
 func (m *Model) openClose() {
+	if !m.ensureViewedDay() {
+		return
+	}
 	if m.note == nil {
-		m.err = "crie a daylist de hoje antes de fechar o dia."
+		m.err = "crie a " + m.daylistPhrase() + " antes de fechar o dia."
 		return
 	}
 	m.summary = daylist.Summarize(m.items)
@@ -876,14 +1056,14 @@ func (m *Model) createWeeklist() tea.Cmd {
 }
 
 func (m *Model) openDaylist() tea.Cmd {
-	if !m.ensureToday() {
+	if !m.ensureViewedDay() {
 		return nil
 	}
 	if !m.backend.DaylistExistsOn(m.day) {
-		m.err = "a daylist de hoje ainda não existe."
+		m.err = "a " + m.daylistPhrase() + " ainda não existe."
 		return nil
 	}
-	return func() tea.Msg { return openedMsg{err: m.backend.OpenDaylist()} }
+	return func() tea.Msg { return openedMsg{err: m.backend.OpenDaylistOn(m.day)} }
 }
 
 func (m *Model) showWeeklist() {

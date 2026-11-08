@@ -87,23 +87,23 @@ está no fim da seção.
 
 ### 4. Daylist de ontem
 
-- [ ] Y1. Separar a data visualizada da data de hoje no modelo do TUI. Critério:
+- [x] Y1. Separar a data visualizada da data de hoje no modelo do TUI. Critério:
   `reload` carrega a data selecionada e o cabeçalho indica claramente quando a
   tela não é a de hoje.
-- [ ] Y2. Adicionar o atalho `y` para alternar entre hoje e ontem, com `t`/`Esc`
+- [x] Y2. Adicionar o atalho `y` para alternar entre hoje e ontem, com `t`/`Esc`
   voltando explicitamente para hoje. Critério: se a daylist de ontem não
   existir, mostrar mensagem clara sem sair do TUI.
-- [ ] Y3. Permitir marcar/desmarcar itens e adicionar Extra na daylist de ontem,
+- [x] Y3. Permitir marcar/desmarcar itens e adicionar Extra na daylist de ontem,
   gravando sempre no arquivo daquela data. O Extra hábito usa a weeklist da
   semana da data visualizada; se ela não existir, avisar. Critério: o undo é
   isolado por dia e não grava conteúdo de ontem no arquivo de hoje.
-- [ ] Y4. Desabilitar timer e edição de motivação em ontem, com mensagem ou
+- [x] Y4. Desabilitar timer e edição de motivação em ontem, com mensagem ou
   rodapé indicando a limitação. Critério: o banner e os controles do timer
   continuam se referindo apenas ao timer de hoje.
-- [ ] Y5. Tratar a virada do dia e o retorno para hoje sem perder cursor,
+- [x] Y5. Tratar a virada do dia e o retorno para hoje sem perder cursor,
   seleção ou estado de edição. Critério: recarregar ontem depois da meia-noite
   não altera a data de hoje nem grava no arquivo errado.
-- [ ] Y6. Cobrir Y1–Y5 com testes de modelo: alternância de dia, arquivo de
+- [x] Y6. Cobrir Y1–Y5 com testes de modelo: alternância de dia, arquivo de
   destino, toggle, Extra, undo por dia, timer desabilitado e virada do dia.
 
 ### 5. Documentação e validação

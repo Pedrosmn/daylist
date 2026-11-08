@@ -42,9 +42,17 @@ func (m Model) View() string {
 func (m Model) mainView() string {
 	var b strings.Builder
 
+	when := dateLabel(m.day) + " · " + weekLabel(m.day)
+	switch {
+	case !m.isToday() && m.viewDateWord() == "ontem":
+		when += " · ontem"
+	case !m.isToday():
+		when += " · outra data"
+	}
+
 	b.WriteString(styleTitle.Render("daylist"))
 	b.WriteString("  ")
-	b.WriteString(styleSubtle.Render(dateLabel(m.now) + " · " + weekLabel(m.now)))
+	b.WriteString(styleSubtle.Render(when))
 	b.WriteString("\n")
 
 	if m.timer != nil {
@@ -58,23 +66,40 @@ func (m Model) mainView() string {
 	b.WriteString("\n")
 
 	if m.note == nil {
-		b.WriteString("A daylist de hoje ainda não existe.\n\n")
-		b.WriteString("  n  criar a daylist de hoje pelo wizard (reutiliza a weeklist)\n")
-		b.WriteString("  N  criar a daylist de amanhã pelo wizard\n")
-		b.WriteString("  c  criar a weeklist atual, se estiver faltando\n")
-		b.WriteString("  r  recarregar\n")
-		b.WriteString("  q  sair\n")
+		b.WriteString("A " + m.daylistPhrase() + " ainda não existe.\n\n")
+		if m.isToday() {
+			b.WriteString("  n  criar a daylist de hoje pelo wizard (reutiliza a weeklist)\n")
+			b.WriteString("  N  criar a daylist de amanhã pelo wizard\n")
+			b.WriteString("  c  criar a weeklist atual, se estiver faltando\n")
+			b.WriteString("  r  recarregar\n")
+			b.WriteString("  q  sair\n")
+		} else {
+			b.WriteString("  t/esc  voltar para hoje\n")
+			b.WriteString("  y      alternar entre hoje e ontem\n")
+			b.WriteString("  r      recarregar\n")
+			b.WriteString("  q      sair\n")
+		}
 	} else {
 		b.WriteString(m.renderNote(m.note, m.selectedLine(), false))
 	}
 
 	b.WriteString("\n")
 	b.WriteString(m.messageView())
-	b.WriteString(styleHelp.Render("? ajuda · j/k mover · espaço marcar · s timer · p pausar · x parar"))
-	b.WriteString("\n")
-	b.WriteString(styleHelp.Render("m motivação · a Extra task · A Extra hábito · W weeklist · F fechar o dia"))
-	b.WriteString("\n")
-	b.WriteString(styleHelp.Render("n daylist de hoje · N daylist de amanhã · c weeklist · o abrir · q sair"))
+	if m.isToday() {
+		b.WriteString(styleHelp.Render("? ajuda · j/k mover · espaço marcar · s timer · p pausar · x parar"))
+		b.WriteString("\n")
+		b.WriteString(styleHelp.Render("m motivação · a Extra task · A Extra hábito · W weeklist · F fechar o dia"))
+		b.WriteString("\n")
+		b.WriteString(styleHelp.Render("n daylist de hoje · N amanhã · c weeklist · o abrir · y ontem · t/esc hoje · q sair"))
+	} else {
+		b.WriteString(styleHelp.Render("? ajuda · j/k mover · espaço marcar · u desfazer · r recarregar"))
+		b.WriteString("\n")
+		b.WriteString(styleHelp.Render("a Extra task · A Extra hábito · W weeklist · F fechar o dia · o abrir"))
+		b.WriteString("\n")
+		b.WriteString(styleHelp.Render("y hoje · t/esc voltar para hoje · q sair"))
+		b.WriteString("\n")
+		b.WriteString(styleHelp.Render("timer e motivação desabilitados"))
+	}
 	return b.String()
 }
 
@@ -87,6 +112,8 @@ func (m Model) helpView() string {
 	b.WriteString("  j/k, ↑/↓      mover o cursor\n")
 	b.WriteString("  g/G, home/end início/fim da lista\n")
 	b.WriteString("  espaço/enter  marcar ou desmarcar o item\n")
+	b.WriteString("  y             alternar entre hoje e ontem\n")
+	b.WriteString("  t/esc         voltar para a daylist de hoje\n")
 	b.WriteString("  r             recarregar a daylist do disco\n")
 	b.WriteString("  q, ctrl+c     sair do TUI\n\n")
 
@@ -97,20 +124,22 @@ func (m Model) helpView() string {
 	b.WriteString("  c  criar a weeklist atual, se estiver faltando\n")
 	b.WriteString("  W  ver a weeklist atual; espaço alterna #always em hábitos\n")
 	b.WriteString("  F  fechar o dia com resumo de planejado vs. real\n")
-	b.WriteString("  o  abrir a daylist de hoje no Obsidian\n")
+	b.WriteString("  o  abrir a daylist exibida no Obsidian\n")
 	b.WriteString("  u  desfazer a última edição da daylist\n\n")
 
 	b.WriteString(styleHeading.Render("Timer"))
 	b.WriteString("\n")
 	b.WriteString("  s  iniciar o timer no item selecionado\n")
 	b.WriteString("  p  pausar ou retomar o timer\n")
-	b.WriteString("  x  parar o timer e gravar o tempo na daylist de origem\n\n")
+	b.WriteString("  x  parar o timer e gravar o tempo na daylist de origem\n")
+	b.WriteString("     (disponível apenas na daylist de hoje)\n\n")
 
 	b.WriteString(styleHeading.Render("Extras e motivação"))
 	b.WriteString("\n")
 	b.WriteString("  a  adicionar Extra task (descrição, tempo, prioridade e motivação)\n")
 	b.WriteString("  A  adicionar hábito Extra escolhido da weeklist\n")
-	b.WriteString("  m  editar ou remover a motivação do item selecionado\n\n")
+	b.WriteString("  m  editar ou remover a motivação do item selecionado\n")
+	b.WriteString("     (motivação disponível apenas na daylist de hoje)\n\n")
 
 	b.WriteString(styleHelp.Render("qualquer tecla volta"))
 	return b.String()
@@ -225,7 +254,7 @@ func (m Model) closeView() string {
 	var b strings.Builder
 	b.WriteString(styleTitle.Render("Fechar o dia"))
 	b.WriteString("  ")
-	b.WriteString(styleSubtle.Render(dateLabel(m.now)))
+	b.WriteString(styleSubtle.Render(dateLabel(m.day)))
 	b.WriteString("\n\n")
 
 	b.WriteString(styleHeading.Render("Resumo"))
@@ -235,7 +264,7 @@ func (m Model) closeView() string {
 	fmt.Fprintf(&b, "  Concluídos: %d\n", summary.Done)
 	fmt.Fprintf(&b, "  Pendentes:  %d\n", summary.Pending)
 
-	if m.timer != nil {
+	if m.timer != nil && m.isToday() {
 		b.WriteString("\n")
 		b.WriteString(styleTimer.Render("◷ " + timer.StatusText(m.timer)))
 		b.WriteString("\n")

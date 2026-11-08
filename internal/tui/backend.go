@@ -26,13 +26,13 @@ type Backend interface {
 	WeeklistExists() bool
 	LoadWeeklist() (*daylist.Note, error)
 	SaveWeeklist(*daylist.Note) error
-	WeeklistHabits() ([]daylist.Item, error)
+	WeeklistHabitsOn(time.Time) ([]daylist.Item, error)
 
 	// PlanDaylist executa o wizard para a data alvo e devolve a prévia, sem gravar.
 	PlanDaylist(time.Time) (*planner.Plan, error)
 	WriteDaylist(*planner.Plan) error
 	CreateWeeklist() error
-	OpenDaylist() error
+	OpenDaylistOn(time.Time) error
 
 	LoadTimer() (*timer.State, error)
 	SaveTimer(*timer.State) error
@@ -99,10 +99,10 @@ func (b *RealBackend) SaveWeeklist(note *daylist.Note) error {
 	return note.Write(b.WeeklistPath())
 }
 
-// WeeklistHabits devolve os hábitos pendentes da weeklist atual. Eles são a
-// origem dos hábitos Extra do TUI.
-func (b *RealBackend) WeeklistHabits() ([]daylist.Item, error) {
-	items, err := daylist.ParseWeeklist(b.WeeklistPath())
+// WeeklistHabitsOn devolve os hábitos pendentes da weeklist da semana da data
+// informada. Eles são a origem dos hábitos Extra do TUI.
+func (b *RealBackend) WeeklistHabitsOn(day time.Time) ([]daylist.Item, error) {
+	items, err := daylist.ParseWeeklist(b.Vault.WeeklistFile(vault.ISOWeek(day)))
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (b *RealBackend) CreateWeeklist() error {
 	return b.CreateWeeklistFn()
 }
 
-func (b *RealBackend) OpenDaylist() error { return b.Vault.OpenNote(b.Today()) }
+func (b *RealBackend) OpenDaylistOn(day time.Time) error { return b.Vault.OpenNote(day) }
 
 func (b *RealBackend) LoadTimer() (*timer.State, error) {
 	state, err := timer.Load(b.Vault.StateFile())

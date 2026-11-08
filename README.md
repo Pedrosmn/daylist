@@ -240,30 +240,44 @@ Tempo planejado: 1h45–1h55
 ## TUI
 
 `daylist` sem subcomando abre o TUI baseado em Bubble Tea/Lipgloss. A tela
-mostra a daylist de hoje com tasks, hábitos por categoria, Extra, itens
-concluídos, motivações e o status do timer.
+mostra, por padrão, a daylist de hoje com tasks, hábitos por categoria, Extra,
+itens concluídos, motivações e o status do timer. A tecla `y` alterna para a
+daylist de ontem; `t` ou `Esc` voltam para hoje.
 
 | Tecla | Ação |
 |---|---|
 | `j` / `k`, `↑` / `↓` | mover o cursor |
 | `g` / `G`, `home` / `end` | início / fim da lista |
 | `Espaço` / `Enter` | marcar ou desmarcar o item |
-| `s` | iniciar o timer no item selecionado |
-| `p` | pausar ou retomar o timer |
-| `x` | parar o timer e gravar o tempo na daylist de origem |
-| `m` | editar ou remover a motivação do item |
+| `y` | alternar entre hoje e ontem |
+| `t` / `Esc` | voltar para a daylist de hoje (na tela principal) |
+| `s` | iniciar o timer no item selecionado (somente hoje) |
+| `p` | pausar ou retomar o timer (somente hoje) |
+| `x` | parar o timer e gravar o tempo na daylist de origem (somente hoje) |
+| `m` | editar ou remover a motivação do item (somente hoje) |
 | `a` | adicionar Extra task |
 | `A` | adicionar hábito Extra escolhido da weeklist |
 | `W` | ver a weeklist atual e alternar `#always` em hábitos |
-| `u` | desfazer a última edição da daylist |
+| `u` | desfazer a última edição da daylist visualizada |
 | `n` | criar a daylist de hoje pelo wizard, com prévia antes de gravar |
 | `N` | criar a daylist de amanhã pelo wizard, com prévia antes de gravar |
 | `c` | criar a weeklist atual, se estiver faltando |
-| `F` | fechar o dia com resumo de planejado vs. real |
-| `o` | abrir a daylist de hoje no Obsidian |
-| `r` | recarregar a daylist do disco |
+| `F` | fechar o dia visualizado com resumo de planejado vs. real |
+| `o` | abrir a daylist visualizada no Obsidian |
+| `r` | recarregar a daylist visualizada do disco |
 | `?` | tela de ajuda |
 | `q` / `Ctrl+C` | sair |
+
+Ao visualizar ontem, o cabeçalho mostra a data e o marcador `ontem`; se o dia
+virar enquanto essa tela está aberta, a data absoluta continua carregada e o
+cabeçalho indica que não é mais o dia de hoje. Marcar itens, adicionar Extra e
+desfazer gravam sempre no arquivo daquela data. O undo e o cursor são mantidos
+por dia: voltar para hoje restaura a seleção de hoje.
+
+O Extra hábito de ontem usa a weeklist da semana da data visualizada. Se essa
+weeklist não existir, o TUI avisa e não cria nada. Timer e edição de motivação
+ficam desabilitados fora de hoje; o banner e os controles do timer continuam
+mostrando apenas o timer do dia atual.
 
 A criação da daylist (de hoje com `n` ou de amanhã com `N`) suspende o TUI e
 executa o wizard normal no terminal.
@@ -272,18 +286,18 @@ gravado — incluindo os hábitos `#always` —, o tempo planejado e um alerta
 quando o dia passa do limite configurado em `DAYLIST_DAY_LIMIT` (padrão de 8h).
 `Enter`/`s` grava e `Esc` cancela sem criar a nota.
 
-O hábito Extra é escolhido entre os hábitos pendentes da weeklist e entra na
-categoria original de `# Hábitos`, contando no feedback. A task Extra vai para
-`# Extra`. A motivação aparece abaixo do item e também é mostrada ao iniciar o
-timer. O atalho `m` abre um formulário que identifica o item, quebra o texto na
-largura do terminal e grava sempre uma única linha. Com o timer ativo, a tela
-principal mostra uma barra do tempo decorrido até o máximo planejado, com
-marcação no mínimo e rótulos de mínimo, atual e máximo. O aviso de tempo
-mínimo/máximo do timer usa as mesmas regras e mensagens do CLI.
+O hábito Extra é escolhido entre os hábitos pendentes da weeklist da semana
+visualizada e entra na categoria original de `# Hábitos`, contando no feedback.
+A task Extra vai para `# Extra`. A motivação aparece abaixo do item e também é
+mostrada ao iniciar o timer. O atalho `m` abre um formulário que identifica o
+item, quebra o texto na largura do terminal e grava sempre uma única linha. Com
+o timer ativo, a tela principal mostra uma barra do tempo decorrido até o
+máximo planejado, com marcação no mínimo e rótulos de mínimo, atual e máximo. O
+aviso de tempo mínimo/máximo do timer usa as mesmas regras e mensagens do CLI.
 
-`F` abre o resumo de fechamento do dia com tempo planejado, tempo real já
-registrado, concluídos e pendentes. Fechar o dia apenas mostra o resumo: nada é
-alterado na nota e nenhum pendente é copiado para amanhã.
+`F` abre o resumo de fechamento do dia visualizado com tempo planejado, tempo
+real já registrado, concluídos e pendentes. Fechar o dia apenas mostra o resumo:
+nada é alterado na nota e nenhum pendente é copiado para amanhã.
 
 O `#always` é exclusivo de hábitos: na tela da weeklist, `Espaço` alterna o
 marcador apenas quando o item está em `# Hábitos`.
