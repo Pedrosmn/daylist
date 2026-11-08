@@ -63,6 +63,10 @@ func newWrapField(label, placeholder string) formField {
 	area.CharLimit = 300
 	area.ShowLineNumbers = false
 	area.MaxHeight = 0
+	// O textarea do Bubbles pinta a linha do cursor com fundo preto por padrão.
+	// No TUI queremos o campo transparente, alinhado ao restante do formulário.
+	area.FocusedStyle.CursorLine = area.FocusedStyle.CursorLine.UnsetBackground()
+	area.BlurredStyle.CursorLine = area.BlurredStyle.CursorLine.UnsetBackground()
 	area.SetWidth(defaultFormWidth)
 	area.SetHeight(1)
 
