@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,8 @@ type fakeBackend struct {
 	weekContent string
 	weekExists  bool
 	habits      []daylist.Item
+	habitDays   []time.Time
+	habitErr    error
 
 	timer       *timer.State
 	timerSave   int
@@ -40,6 +43,7 @@ type fakeBackend struct {
 	writeErr       error
 	createdWeek    int
 	opened         int
+	openedDay      time.Time
 	notified       []string
 
 	savedNote  string
@@ -129,7 +133,13 @@ func (f *fakeBackend) SaveWeeklist(note *daylist.Note) error {
 	return nil
 }
 
-func (f *fakeBackend) WeeklistHabits() ([]daylist.Item, error) { return f.habits, nil }
+func (f *fakeBackend) WeeklistHabitsOn(day time.Time) ([]daylist.Item, error) {
+	f.habitDays = append(f.habitDays, day)
+	if f.habitErr != nil {
+		return nil, f.habitErr
+	}
+	return f.habits, nil
+}
 
 func (f *fakeBackend) PlanDaylist(target time.Time) (*planner.Plan, error) {
 	f.planned++
@@ -160,8 +170,9 @@ func (f *fakeBackend) CreateWeeklist() error {
 	return nil
 }
 
-func (f *fakeBackend) OpenDaylist() error {
+func (f *fakeBackend) OpenDaylistOn(day time.Time) error {
 	f.opened++
+	f.openedDay = day
 	return nil
 }
 
@@ -1059,5 +1070,351 @@ func TestOpenWithoutDaylistShowsError(t *testing.T) {
 	}
 	if fake.opened != 0 {
 		t.Errorf("OpenDaylist chamado %d vezes", fake.opened)
+	}
+}
+
+func TestToggleBetweenTodayAndYesterday(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa de hoje\n")
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n- [ ] 10 min (I) - tarefa de ontem\n",
+	}
+	fake.timer = &timer.State{Desc: "timer de hoje"}
+
+	m := New(fake)
+	if !m.isToday() {
+		t.Fatalf("modelo iniciou fora de hoje: %v", m.day)
+	}
+	if m.timer == nil {
+		t.Fatal("timer de hoje não foi carregado")
+	}
+
+	m = updateModel(t, m, keyRunes("y"))
+	if got := m.day.Format("2006-01-02"); got != "2026-11-04" {
+		t.Fatalf("data visualizada = %s, want 2026-11-04", got)
+	}
+	if len(m.items) != 1 || !strings.Contains(m.items[0].Desc, "ontem") {
+		t.Fatalf("itens de ontem não carregados: %+v", m.items)
+	}
+	if m.timer != nil {
+		t.Errorf("banner do timer deveria sumir em ontem: %+v", m.timer)
+	}
+	view := m.View()
+	for _, want := range []string{"ontem", "04/11/2026", "tarefa de ontem", "timer e motivação desabilitados"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view de ontem não contém %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "Timer rodando") {
+		t.Errorf("banner do timer apareceu em ontem:\n%s", view)
+	}
+
+	m = updateModel(t, m, keyRunes("t"))
+	if !sameDay(m.day, fake.now) {
+		t.Fatalf("t não voltou para hoje: %v", m.day)
+	}
+	if m.timer == nil {
+		t.Error("timer de hoje não foi recarregado ao voltar")
+	}
+	view = m.View()
+	if strings.Contains(view, "tarefa de ontem") || !strings.Contains(view, "tarefa de hoje") {
+		t.Errorf("view de hoje inesperada:\n%s", view)
+	}
+}
+
+func TestYesterdayMissingShowsMessageWithoutLeavingTUI(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] tarefa de hoje\n")
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("y"))
+	if got := m.day.Format("2006-01-02"); got != "2026-11-04" {
+		t.Fatalf("data visualizada = %s, want 2026-11-04", got)
+	}
+	if m.note != nil {
+		t.Fatalf("não deveria haver nota de ontem: %+v", m.note)
+	}
+	if m.mode != modeMain {
+		t.Errorf("mode = %v, want main", m.mode)
+	}
+	view := m.View()
+	for _, want := range []string{"daylist de ontem ainda não existe", "t/esc", "y"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view sem aviso de ontem ausente (%q):\n%s", want, view)
+		}
+	}
+
+	m = updateModel(t, m, keyType(tea.KeyEsc))
+	if !sameDay(m.day, fake.now) || m.note == nil {
+		t.Errorf("esc não voltou para hoje: day=%v note=%+v", m.day, m.note)
+	}
+}
+
+func TestYesterdayEditsWriteToYesterdayFile(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa de hoje\n")
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n- [ ] 10 min (I) - tarefa de ontem\n",
+	}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("y"))
+	m = updateModel(t, m, keyRunes(" "))
+	if len(fake.savedDays) != 1 || fake.savedDays[0] != "2026-11-04" {
+		t.Fatalf("toggle gravou em %v, want só 2026-11-04", fake.savedDays)
+	}
+	if got := fake.savedByDay["2026-11-04"]; !strings.Contains(got, "- [x] 10 min (I) - tarefa de ontem") {
+		t.Errorf("item de ontem não foi concluído:\n%s", got)
+	}
+	if _, ok := fake.savedByDay["2026-11-05"]; ok {
+		t.Errorf("arquivo de hoje foi alterado ao editar ontem: %v", fake.savedByDay)
+	}
+
+	// Extra task na tela de ontem também precisa gravar no arquivo de ontem.
+	m = updateModel(t, m, keyRunes("a"))
+	m = updateModel(t, m, keyRunes("Extra de ontem"))
+	m = updateModel(t, m, keyType(tea.KeyCtrlS))
+	if len(fake.savedDays) != 2 || fake.savedDays[1] != "2026-11-04" {
+		t.Fatalf("Extra gravou em %v, want ontem", fake.savedDays)
+	}
+	if got := fake.savedByDay["2026-11-04"]; !strings.Contains(got, "# Extra") ||
+		!strings.Contains(got, "Extra de ontem") {
+		t.Errorf("Extra não foi para a daylist de ontem:\n%s", got)
+	}
+	if _, ok := fake.savedByDay["2026-11-05"]; ok {
+		t.Errorf("arquivo de hoje foi alterado pelo Extra de ontem: %v", fake.savedByDay)
+	}
+}
+
+func TestUndoIsolatedPerDay(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa de hoje\n")
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n- [ ] 10 min (I) - tarefa de ontem\n",
+	}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes(" ")) // undo de hoje
+	m = updateModel(t, m, keyRunes("y"))
+	m = updateModel(t, m, keyRunes("u")) // ontem ainda não tem undo
+	if !strings.Contains(m.st, "Nada para desfazer") {
+		t.Errorf("status = %q, want histórico vazio em ontem", m.st)
+	}
+	if len(fake.savedDays) != 1 {
+		t.Fatalf("undo em ontem gravou: %v", fake.savedDays)
+	}
+
+	m = updateModel(t, m, keyRunes(" ")) // cria undo de ontem
+	m = updateModel(t, m, keyRunes("u")) // desfaz só ontem
+	if len(fake.savedDays) != 3 || fake.savedDays[1] != "2026-11-04" || fake.savedDays[2] != "2026-11-04" {
+		t.Fatalf("sequência de gravações em ontem = %v", fake.savedDays)
+	}
+
+	m = updateModel(t, m, keyRunes("t"))
+	m = updateModel(t, m, keyRunes("u")) // desfaz o undo que ficou guardado de hoje
+	if len(fake.savedDays) != 4 || fake.savedDays[3] != "2026-11-05" {
+		t.Fatalf("undo de hoje não foi isolado: %v", fake.savedDays)
+	}
+	for _, day := range []string{"2026-11-04", "2026-11-05"} {
+		if got := fake.savedByDay[day]; !strings.Contains(got, "- [ ] 10 min (I)") {
+			t.Errorf("daylist %s não voltou ao estado inicial:\n%s", day, got)
+		}
+	}
+}
+
+func TestYesterdayDisablesTimerAndMotivation(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] 10 min (I) - tarefa de hoje\n")
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n- [ ] 10 min (I) - tarefa de ontem\n",
+	}
+	fake.timer = &timer.State{Desc: "timer de hoje"}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("y"))
+	if m.timer != nil {
+		t.Fatalf("timer deveria estar oculto em ontem: %+v", m.timer)
+	}
+
+	m = updateModel(t, m, keyRunes("s"))
+	if !strings.Contains(m.err, "timer") || !strings.Contains(m.err, "hoje") {
+		t.Errorf("err ao iniciar timer em ontem = %q", m.err)
+	}
+	if fake.timerSave != 0 {
+		t.Errorf("timer foi salvo em ontem: saves=%d", fake.timerSave)
+	}
+
+	m = updateModel(t, m, keyRunes("p"))
+	if fake.timerSave != 0 {
+		t.Errorf("timer foi pausado em ontem: saves=%d", fake.timerSave)
+	}
+	m = updateModel(t, m, keyRunes("x"))
+	if fake.cleared != 0 {
+		t.Errorf("timer foi parado em ontem: clears=%d", fake.cleared)
+	}
+
+	m = updateModel(t, m, keyRunes("m"))
+	if m.mode == modeForm {
+		t.Error("formulário de motivação abriu em ontem")
+	}
+	if !strings.Contains(m.err, "motivação") || !strings.Contains(m.err, "hoje") {
+		t.Errorf("err ao editar motivação em ontem = %q", m.err)
+	}
+
+	m = updateModel(t, m, keyRunes("t"))
+	if m.timer == nil {
+		t.Error("timer de hoje deveria voltar ao retornar para hoje")
+	}
+}
+
+func TestYesterdayExtraHabitUsesViewedWeeklist(t *testing.T) {
+	fake := newFake("# Tasks\n")
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n",
+	}
+	fake.habits = []daylist.Item{{
+		Section: "Hábitos", Category: "Rotina", Time: "5 min", Desc: "Fio dental",
+	}}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("y"))
+	m = updateModel(t, m, keyRunes("A"))
+	if len(fake.habitDays) != 1 || !sameDate(fake.habitDays[0], m.day) {
+		t.Fatalf("weeklist consultada em %v, want %v", fake.habitDays, m.day)
+	}
+	m = updateModel(t, m, keyType(tea.KeyEnter))
+	m = updateModel(t, m, keyType(tea.KeyEnter))
+
+	if len(fake.savedDays) != 1 || fake.savedDays[0] != "2026-11-04" {
+		t.Fatalf("hábito gravou em %v, want só ontem", fake.savedDays)
+	}
+	if got := fake.savedByDay["2026-11-04"]; !strings.Contains(got, "## Rotina") ||
+		!strings.Contains(got, "5 min - Fio dental") {
+		t.Errorf("hábito Extra não foi para ontem:\n%s", got)
+	}
+}
+
+func TestYesterdayExtraHabitWithoutWeeklistWarns(t *testing.T) {
+	fake := newFake("# Tasks\n")
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n",
+	}
+	fake.habitErr = os.ErrNotExist
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("y"))
+	m = updateModel(t, m, keyRunes("A"))
+	if !strings.Contains(m.err, "weeklist da semana de ontem não encontrada") {
+		t.Errorf("err = %q", m.err)
+	}
+	if m.mode != modeMain {
+		t.Errorf("mode = %v, want main", m.mode)
+	}
+}
+
+func TestMidnightWhileViewingYesterdayKeepsAbsoluteDate(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] tarefa de hoje\n")
+	fake.now = time.Date(2026, time.November, 5, 23, 59, 0, 0, time.Local)
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n- [ ] tarefa de ontem\n",
+	}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("y"))
+	if got := m.day.Format("2006-01-02"); got != "2026-11-04" {
+		t.Fatalf("data visualizada = %s", got)
+	}
+
+	fake.now = time.Date(2026, time.November, 6, 0, 1, 0, 0, time.Local)
+	fake.notes["2026-11-06"] = "# Tasks\n- [ ] tarefa do novo dia\n"
+
+	m = updateModel(t, m, tickMsg(fake.now))
+	if got := m.day.Format("2006-01-02"); got != "2026-11-04" {
+		t.Fatalf("tick mudou a data visualizada para %s", got)
+	}
+	if !sameDate(m.now, fake.now) {
+		t.Errorf("relógio = %v, want %v", m.now, fake.now)
+	}
+	if !strings.Contains(m.st, "continua na daylist de 04/11/2026") {
+		t.Errorf("status = %q", m.st)
+	}
+	if m.note == nil || !strings.Contains(m.note.String(), "tarefa de ontem") {
+		t.Errorf("nota de ontem foi perdida: %+v", m.note)
+	}
+
+	m = updateModel(t, m, keyRunes(" "))
+	if len(fake.savedDays) != 1 || fake.savedDays[0] != "2026-11-04" {
+		t.Fatalf("edição depois da virada gravou em %v", fake.savedDays)
+	}
+	if _, ok := fake.savedByDay["2026-11-06"]; ok {
+		t.Errorf("edição de ontem vazou para o novo dia: %v", fake.savedByDay)
+	}
+
+	m = updateModel(t, m, keyRunes("r"))
+	if got := m.day.Format("2006-01-02"); got != "2026-11-04" {
+		t.Errorf("reload depois da virada mudou a data para %s", got)
+	}
+
+	m = updateModel(t, m, keyRunes("t"))
+	if got := m.day.Format("2006-01-02"); got != "2026-11-06" {
+		t.Fatalf("t não voltou para o novo hoje: %s", got)
+	}
+	if m.note == nil || !strings.Contains(m.note.String(), "tarefa do novo dia") {
+		t.Errorf("daylist do novo dia não foi carregada: %+v", m.note)
+	}
+	if _, ok := fake.savedByDay["2026-11-06"]; ok {
+		t.Errorf("voltar para hoje não deveria gravar: %v", fake.savedByDay)
+	}
+}
+
+func TestMidnightKeepsOpenExtraFormOnYesterday(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] tarefa de hoje\n")
+	fake.now = time.Date(2026, time.November, 5, 23, 59, 0, 0, time.Local)
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n- [ ] tarefa de ontem\n",
+	}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("y"))
+	m = updateModel(t, m, keyRunes("a"))
+	m = updateModel(t, m, keyRunes("Extra noturno"))
+
+	fake.now = time.Date(2026, time.November, 6, 0, 1, 0, 0, time.Local)
+	fake.notes["2026-11-06"] = "# Tasks\n- [ ] tarefa do novo dia\n"
+	m = updateModel(t, m, tickMsg(fake.now))
+
+	if m.mode != modeForm {
+		t.Fatalf("mode = %v, want form preservado", m.mode)
+	}
+	if m.form == nil || m.form.value(0) != "Extra noturno" {
+		t.Fatalf("estado de edição perdido: %+v", m.form)
+	}
+
+	m = updateModel(t, m, keyType(tea.KeyCtrlS))
+	if len(fake.savedDays) != 1 || fake.savedDays[0] != "2026-11-04" {
+		t.Fatalf("form depois da virada gravou em %v", fake.savedDays)
+	}
+	if got := fake.savedByDay["2026-11-04"]; !strings.Contains(got, "Extra noturno") {
+		t.Errorf("Extra não foi para a daylist de ontem:\n%s", got)
+	}
+}
+
+func TestToggleYesterdayPreservesCursorPerDay(t *testing.T) {
+	fake := newFake("# Tasks\n- [ ] item a\n- [ ] item b\n- [ ] item c\n")
+	fake.notes = map[string]string{
+		"2026-11-04": "# Tasks\n- [ ] item x\n",
+	}
+	m := New(fake)
+
+	m = updateModel(t, m, keyRunes("j"))
+	if m.cursor != 1 {
+		t.Fatalf("cursor antes = %d, want 1", m.cursor)
+	}
+	m = updateModel(t, m, keyRunes("y"))
+	if m.cursor != 0 {
+		t.Errorf("cursor em ontem = %d, want 0", m.cursor)
+	}
+	m = updateModel(t, m, keyRunes("t"))
+	if m.cursor != 1 {
+		t.Errorf("cursor ao voltar para hoje = %d, want 1", m.cursor)
+	}
+	item, ok := m.selected()
+	if !ok || item.Desc != "item b" {
+		t.Errorf("seleção ao voltar = %+v, want item b", item)
 	}
 }
