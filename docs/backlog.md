@@ -2,11 +2,103 @@
 
 Itens fora do escopo atual. Não são compromissos e não bloqueiam o roadmap.
 
-## Ciclo planejado — Ajustes de UX do TUI (2026-11-07)
+## Ciclo entregue — Resumo e feedback da semana no TUI (2026-11-08)
+
+Status: `RS1–RS9` concluídos em 2026-11-09, com `make ci` verde e validação
+manual do TUI em pty.
+
+Levar o feedback para o TUI e permitir acompanhar o resumo da semana durante a
+semana, sem esperar o domingo. O `feedback.md` continua sendo a exportação; a
+linha compacta e a tela do TUI são leituras do mesmo cálculo.
+
+### Decisões
+
+- Duas camadas: uma linha compacta na tela principal (acompanhamento contínuo)
+  e a tela `S` com o resumo completo.
+- A linha e a tela usam a mesma conta do `daylist feedback`: itens `[x]` sobre
+  ocorrências de hábitos nas daylists. A semana atual conta até hoje; semanas
+  passadas contam de segunda a domingo; daylists futuras são ignoradas.
+- O percentual vem acompanhado de `dias com daylist` e de um recorte por dia,
+  para não parecer 100% no começo da semana.
+- Hábitos da weeklist sem ocorrências aparecem como `0/0 (—)` ou em uma seção
+  de não usados; eles não alteram o total.
+- A semana exibida é a da data visualizada no TUI (`m.day`); `y`/ontem usa a
+  semana correspondente.
+- O feedback da última semana encerrada é gerado automaticamente ao encerrar a
+  semana: na virada domingo→segunda com o TUI aberto ou na primeira abertura a
+  partir de segunda.
+- O automático age apenas na última semana encerrada, somente se a weeklist
+  existir e o `feedback.md` não existir. Nunca sobrescreve e não faz backfill.
+- O resumo é somente leitura neste ciclo; não há atalho `g` para o feedback. A
+  geração manual continua em `daylist feedback`.
+- Tempo por categoria, comparação com a semana anterior, streaks e
+  `feedback --progress` ficam para depois.
+
+### 1. Cálculo compartilhado
+
+- [x] RS1. Extrair `ComputeReport` em `internal/week` com categorias, hábitos,
+  totais e estatísticas por dia; fazer `BuildFeedback` renderizar a partir
+  dessa representação mantendo a saída atual idêntica. Critério: testes
+  existentes verdes e novas coberturas para `ComputeReport`.
+- [x] RS2. Adicionar `DayStat` e percentuais por hábito/categoria/semana; cobrir
+  ordem de categorias e hábitos, CRLF, `#always`, sufixo `⏱`, hábitos da
+  weeklist sem ocorrências e dias sem daylist. Critério: o cálculo do TUI e do
+  CLI é o mesmo, verificado por testes.
+
+### 2. Dados no TUI
+
+- [x] RS3. Adicionar `WeekReportOn(day)` ao backend do TUI: lê a weeklist da
+  semana da data e as daylists da semana, até hoje na semana atual e até domingo
+  nas semanas passadas, ignorando ausentes e futuras. Critério: a data
+  visualizada define a semana e a weeklist ausente é distinguível.
+- [x] RS4. Adicionar `FeedbackExistsOn(day)` e
+  `AutoGeneratePreviousFeedback(today)` no backend real: gera apenas a última
+  semana encerrada, se a weeklist existir e o `feedback.md` não existir; nunca
+  sobrescreve e não faz backfill. Critério: idempotente e coberto com vault
+  temporário.
+
+### 3. Interface
+
+- [x] RS5. Exibir uma linha compacta na tela principal com barra, percentual,
+  hábitos, dias com daylist e o recorte de hoje, adaptada à largura. Critério:
+  atualiza ao marcar/desmarcar e na virada do dia; fica oculta se a weeklist não
+  existir.
+- [x] RS6. Criar o modo `S` de resumo da semana, somente leitura: barra geral,
+  hábitos por categoria, recorte por dia, estado do `feedback.md`, destaque de
+  hoje, `—` para ausente e `·` para futuro. Critério: `S`/`esc` navegam; semana
+  atual mostra o parcial até hoje; semana passada mostra os sete dias; weeklist
+  ausente mostra mensagem clara; terminal estreito não quebra.
+- [x] RS7. Disparar o automático no `New` do TUI e na virada do dia
+  (domingo→segunda), com mensagem discreta de sucesso. Critério: gera uma vez,
+  não gera para a semana atual nem para semanas antigas e não bloqueia o uso.
+
+### 4. Testes e documentação
+
+- [x] RS8. Cobrir RS1–RS7 com testes de `internal/week`, backend real com
+  `t.TempDir`, modelo do TUI (linha, `S`, rollover, ontem, weeklist ausente e
+  automático) e view (barras, 0/0, sem dados e terminal estreito).
+- [x] RS9. Atualizar README e ajuda do TUI (tecla `S`, linha da semana,
+  automático ao encerrar a semana e ausência de `g`), roadmap e este backlog;
+  rodar `make ci` e validar manualmente.
+
+### Ordem de execução
+
+`RS1 → RS2 → RS3 → RS4 → RS5 → RS6 → RS7 → RS8 → RS9`.
+
+### Adiado
+
+- Tempo planejado/real por categoria (`daylist stats week`).
+- Comparação com a semana anterior e streaks por hábito.
+- `daylist feedback --progress` para prompt/status bar.
+- Backfill de feedbacks de semanas antigas.
+- Atalho manual para gerar o feedback no TUI; se necessário, entra depois do
+  automático. O `g`/`G` continua apenas como navegação da lista.
+
+## Ciclo entregue — Ajustes de UX do TUI (2026-11-07)
 
 Ajustes de uso diário no TUI, sem mudar o formato das notas nem o fluxo do
-wizard. As tarefas abaixo são a referência do próximo ciclo; a ordem sugerida
-está no fim da seção.
+wizard. Status: `M1–M6`, `P1–P3`, `N1–N5`, `Y1–Y6` e `DOC1–DOC3` concluídos em
+2026-11-08. A ordem sugerida está no fim da seção.
 
 ### Decisões
 
@@ -108,12 +200,14 @@ está no fim da seção.
 
 ### 5. Documentação e validação
 
-- [ ] DOC1. Atualizar o README: tecla `m`, formulário de motivação com wrap,
+- [x] DOC1. Atualizar o README: tecla `m`, formulário de motivação com wrap,
   barra do timer, `timer watch`, atalho `y` e limitações da daylist de ontem.
-- [ ] DOC2. Atualizar o roadmap com o ciclo e o estado das tarefas.
-- [ ] DOC3. Rodar `make ci` e validar manualmente em terminal real: `m`,
+- [x] DOC2. Atualizar o roadmap com o ciclo e o estado das tarefas.
+- [x] DOC3. Rodar `make ci` e validar manualmente em terminal real: `m`,
   motivação longa, barra do timer, notificação com o TUI fechado, ontem com
-  toggle/Extra e retorno para hoje.
+  toggle/Extra e retorno para hoje. Validação feita em pty com vault
+  temporário; o `notify-send` foi simulado para confirmar os avisos de mínimo
+  e máximo com o TUI fechado.
 
 ### Ordem de execução
 

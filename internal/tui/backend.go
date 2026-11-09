@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"daylist/internal/planner"
 	"daylist/internal/timer"
 	"daylist/internal/vault"
+	"daylist/internal/week"
 )
 
 // Backend concentra as operações de disco e de terminal usadas pelo TUI. O
@@ -27,6 +29,9 @@ type Backend interface {
 	LoadWeeklist() (*daylist.Note, error)
 	SaveWeeklist(*daylist.Note) error
 	WeeklistHabitsOn(time.Time) ([]daylist.Item, error)
+	WeekReportOn(time.Time) (*week.Report, error)
+	FeedbackExistsOn(time.Time) bool
+	AutoGeneratePreviousFeedback(time.Time) (bool, error)
 
 	// PlanDaylist executa o wizard para a data alvo e devolve a prévia, sem gravar.
 	PlanDaylist(time.Time) (*planner.Plan, error)
@@ -113,6 +118,128 @@ func (b *RealBackend) WeeklistHabitsOn(day time.Time) ([]daylist.Item, error) {
 		}
 	}
 	return habits, nil
+}
+
+// WeekReportOn calcula o resumo da semana da data informada. Na semana atual
+// lê as daylists até hoje; nas semanas passadas lê até domingo. Daylists
+// ausentes e futuras ficam de fora. A weeklist ausente devolve os.ErrNotExist,
+// para o TUI distinguir a semana sem dados.
+func (b *RealBackend) WeekReportOn(day time.Time) (*week.Report, error) {
+	weekString := vault.ISOWeek(day)
+	weeklist, err := os.ReadFile(b.Vault.WeeklistFile(weekString))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("weeklist de %s não encontrada: %w", weekString, os.ErrNotExist)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	start, err := week.ParseWeek(weekString)
+	if err != nil {
+		return nil, err
+	}
+	today := dateOnly(b.Today())
+	viewStart := weekStartOf(day)
+	todayStart := weekStartOf(today)
+
+	var days []week.Day
+	if !viewStart.After(todayStart) {
+		end := start.AddDate(0, 0, 6)
+		if viewStart.Equal(todayStart) && today.Before(end) {
+			end = today
+		}
+		for current := start; !current.After(end); current = current.AddDate(0, 0, 1) {
+			content, err := os.ReadFile(b.Vault.DaylistFile(current))
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			days = append(days, week.Day{Date: current, Content: string(content)})
+		}
+	}
+
+	report := week.ComputeReport(weekString, string(weeklist), days)
+	return &report, nil
+}
+
+// FeedbackExistsOn informa se o feedback da semana da data já foi gerado.
+func (b *RealBackend) FeedbackExistsOn(day time.Time) bool {
+	return fileExists(b.Vault.FeedbackFile(vault.ISOWeek(day)))
+}
+
+// AutoGeneratePreviousFeedback gera somente o feedback da última semana
+// encerrada, se a weeklist existir e o arquivo ainda não existir. A criação é
+// exclusiva para nunca sobrescrever um feedback existente; semanas anteriores
+// não recebem backfill.
+func (b *RealBackend) AutoGeneratePreviousFeedback(today time.Time) (bool, error) {
+	createdAt := today
+	today = dateOnly(today)
+	previous := week.PreviousWeek(weekStartOf(today))
+	weekString := vault.ISOWeek(previous)
+
+	feedbackPath := b.Vault.FeedbackFile(weekString)
+	if fileExists(feedbackPath) {
+		return false, nil
+	}
+
+	weeklist, err := os.ReadFile(b.Vault.WeeklistFile(weekString))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	var days []week.Day
+	for _, day := range week.WeekDays(previous) {
+		content, err := os.ReadFile(b.Vault.DaylistFile(day))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		days = append(days, week.Day{Date: day, Content: string(content)})
+	}
+
+	return writeNewFile(feedbackPath, week.BuildFeedback(weekString, string(weeklist), days, createdAt))
+}
+
+// weekStartOf devolve a segunda-feira da semana da data.
+func weekStartOf(day time.Time) time.Time {
+	start, err := week.ParseWeek(vault.ISOWeek(day))
+	if err != nil {
+		return dateOnly(day)
+	}
+	return start
+}
+
+// writeNewFile grava o conteúdo apenas se o arquivo ainda não existir. Devolve
+// true quando a gravação aconteceu. O O_EXCL evita sobrescrever um arquivo
+// criado entre a verificação e a escrita.
+func writeNewFile(path, content string) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return false, err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if errors.Is(err, os.ErrExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if _, err := file.WriteString(content); err != nil {
+		file.Close()
+		os.Remove(path)
+		return false, err
+	}
+	if err := file.Close(); err != nil {
+		os.Remove(path)
+		return false, err
+	}
+	return true, nil
 }
 
 func (b *RealBackend) PlanDaylist(target time.Time) (*planner.Plan, error) {

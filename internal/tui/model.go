@@ -14,6 +14,7 @@ import (
 	"daylist/internal/daylist"
 	"daylist/internal/planner"
 	"daylist/internal/timer"
+	"daylist/internal/week"
 )
 
 type mode int
@@ -27,6 +28,7 @@ const (
 	modeConfirm
 	modePreview
 	modeClose
+	modeSummary
 )
 
 type pendingAction int
@@ -39,6 +41,12 @@ const (
 const maxUndo = 30
 
 type tickMsg time.Time
+
+type feedbackGeneratedMsg struct {
+	week    string
+	created bool
+	err     error
+}
 
 type plannedMsg struct {
 	plan   *planner.Plan
@@ -71,6 +79,10 @@ type Model struct {
 
 	preview *planner.Plan
 	summary daylist.Summary
+
+	weekReport      *week.Report
+	weekReportErr   error
+	summaryFeedback bool
 
 	habitChoices []daylist.Item
 	habitCursor  int
@@ -106,16 +118,38 @@ func New(backend Backend) *Model {
 	return m
 }
 
-// Init inicia o relógio do cabeçalho e do timer.
+// Init inicia o relógio do cabeçalho, o timer e a verificação do feedback da
+// última semana encerrada. A geração roda como comando para não bloquear a
+// abertura do TUI.
 func (m *Model) Init() tea.Cmd {
 	if m.timer != nil {
 		_ = m.backend.StartTimerWatch()
 	}
-	return tickCmd()
+	return tea.Batch(tickCmd(), m.autoGenerateFeedback(m.now))
 }
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+// autoGenerateFeedback agenda a geração do feedback da última semana
+// encerrada. O comando roda fora do ciclo de atualização para não bloquear o
+// uso do TUI.
+func (m *Model) autoGenerateFeedback(today time.Time) tea.Cmd {
+	target := week.PreviousWeek(weekStartOf(dateOnly(today)))
+	return func() tea.Msg {
+		created, err := m.backend.AutoGeneratePreviousFeedback(today)
+		return feedbackGeneratedMsg{week: weekLabel(target), created: created, err: err}
+	}
+}
+
+// autoFeedbackOnRollover dispara o automático apenas na virada de domingo para
+// segunda, quando a última semana termina.
+func (m *Model) autoFeedbackOnRollover(oldToday, newToday time.Time) tea.Cmd {
+	if dateOnly(oldToday).Weekday() != time.Sunday || dateOnly(newToday).Weekday() != time.Monday {
+		return nil
+	}
+	return m.autoGenerateFeedback(newToday)
 }
 
 // Update implementa tea.Model.
@@ -132,13 +166,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		now := m.backend.Today()
 		oldToday := dateOnly(m.now)
 		newToday := dateOnly(now)
+		var autoFeedback tea.Cmd
 		if !sameDay(oldToday, newToday) {
+			autoFeedback = m.autoFeedbackOnRollover(oldToday, newToday)
 			if sameDay(m.day, oldToday) {
 				// Estava vendo o dia que era hoje: acompanha a virada.
 				m.switchDay(newToday)
 				m.st = "Novo dia: daylist de hoje recarregada."
 				if m.mode == modeWeeklist || m.mode == modeForm || m.mode == modeHabitPick ||
-					m.mode == modeConfirm || m.mode == modePreview || m.mode == modeClose {
+					m.mode == modeConfirm || m.mode == modePreview || m.mode == modeClose ||
+					m.mode == modeSummary {
 					m.form = nil
 					m.week = nil
 					m.habitChoices = nil
@@ -156,7 +193,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.now = now
 		}
-		return m, tea.Batch(tickCmd(), m.checkThresholds())
+		return m, tea.Batch(tickCmd(), m.checkThresholds(), autoFeedback)
+
+	case feedbackGeneratedMsg:
+		switch {
+		case msg.err != nil:
+			m.err = "não foi possível gerar o feedback da semana anterior: " + msg.err.Error()
+		case msg.created:
+			m.st = "Feedback de " + msg.week + " gerado automaticamente."
+		}
+		return m, nil
 
 	case plannedMsg:
 		m.mode = modeMain
@@ -215,6 +261,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updatePreview(msg)
 		case modeClose:
 			return m.updateClose(msg)
+		case modeSummary:
+			return m.updateSummary(msg)
 		}
 	}
 
@@ -265,6 +313,8 @@ func (m *Model) updateMain(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.planDaylist(m.backend.Today().AddDate(0, 0, 1))
 	case "F":
 		m.openClose()
+	case "S":
+		m.openSummary()
 	case "c":
 		return m, m.createWeeklist()
 	case "W":
@@ -391,6 +441,21 @@ func (m *Model) reload() {
 		}
 	}
 	m.clampCursor()
+
+	// O resumo acompanha a data visualizada. A ausência da weeklist apenas
+	// oculta a linha compacta; outros erros são mostrados no rodapé.
+	m.weekReport = nil
+	m.weekReportErr = nil
+	report, err := m.backend.WeekReportOn(m.day)
+	switch {
+	case err == nil:
+		m.weekReport = report
+	default:
+		m.weekReportErr = err
+		if !errors.Is(err, os.ErrNotExist) {
+			m.err = "não foi possível ler o resumo da semana: " + err.Error()
+		}
+	}
 
 	// O timer é único e pertence ao dia de hoje. Ao visualizar ontem, o
 	// banner e os controles ficam fora da tela.
@@ -1016,6 +1081,22 @@ func (m *Model) openClose() {
 func (m *Model) updateClose(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "esc", "q", "F", "enter":
+		m.mode = modeMain
+	}
+	return m, nil
+}
+
+func (m *Model) openSummary() {
+	if !m.ensureViewedDay() {
+		return
+	}
+	m.summaryFeedback = m.backend.FeedbackExistsOn(m.day)
+	m.mode = modeSummary
+}
+
+func (m *Model) updateSummary(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc", "q", "S":
 		m.mode = modeMain
 	}
 	return m, nil
