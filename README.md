@@ -146,6 +146,11 @@ daylist feedback --dry-run
 daylist feedback --print-path
 ```
 
+O TUI consulta o mesmo cálculo em `S` e gera automaticamente o feedback da
+última semana encerrada ao abrir a partir de segunda, sem sobrescrever arquivos
+existentes e sem backfill. Para semanas antigas ou para regravar um arquivo, use
+este comando.
+
 ### `daylist timer` (`t`)
 
 Controla o timer de um item da daylist de hoje.
@@ -258,6 +263,7 @@ daylist de ontem; `t` ou `Esc` voltam para hoje.
 | `a` | adicionar Extra task |
 | `A` | adicionar hábito Extra escolhido da weeklist |
 | `W` | ver a weeklist atual e alternar `#always` em hábitos |
+| `S` | ver o resumo da semana visualizada (somente leitura) |
 | `u` | desfazer a última edição da daylist visualizada |
 | `n` | criar a daylist de hoje pelo wizard, com prévia antes de gravar |
 | `N` | criar a daylist de amanhã pelo wizard, com prévia antes de gravar |
@@ -298,6 +304,35 @@ aviso de tempo mínimo/máximo do timer usa as mesmas regras e mensagens do CLI.
 `F` abre o resumo de fechamento do dia visualizado com tempo planejado, tempo
 real já registrado, concluídos e pendentes. Fechar o dia apenas mostra o resumo:
 nada é alterado na nota e nenhum pendente é copiado para amanhã.
+
+### Resumo e feedback da semana
+
+Quando a weeklist da semana visualizada existe, a tela principal mostra uma
+linha compacta, por exemplo:
+
+```text
+Semana 2026-W45 ███████░░░ 62% · 13/21 hábitos · 4/7 dias · hoje 3/5
+```
+
+A linha usa o mesmo cálculo do `daylist feedback`, atualiza ao marcar ou
+desmarcar um hábito e na virada do dia, e fica oculta quando a weeklist não
+existe. A semana exibida é a da data visualizada: hoje, ontem ou a data
+carregada no TUI.
+
+`S` abre o resumo somente leitura da semana visualizada, com barra geral,
+hábitos por categoria, recorte por dia e estado do `feedback.md`. A semana atual
+conta até hoje; semanas passadas contam de segunda a domingo; daylists futuras
+são ignoradas. `S`, `Esc` ou `q` voltam para a tela principal.
+
+O feedback da última semana encerrada é gerado automaticamente na primeira
+abertura a partir de segunda ou na virada de domingo para segunda com o TUI
+aberto. A geração age apenas na última semana encerrada, somente se a weeklist
+existir e o `feedback.md` ainda não existir: nunca sobrescreve um arquivo
+existente e não faz backfill. A geração manual continua em `daylist feedback`.
+
+Não há atalho `g` para gerar ou abrir o feedback. Use `S` para consultar o
+resumo da semana ou `daylist feedback` para gerar o arquivo. O `g`/`G` do TUI
+continua sendo apenas navegação para o início/fim da lista.
 
 O `#always` é exclusivo de hábitos: na tela da weeklist, `Espaço` alterna o
 marcador apenas quando o item está em `# Hábitos`.
@@ -361,7 +396,7 @@ internal/wizard/      fluxo por etapas, voltar e tempo total
 internal/planner/     monta a daylist em memória para prévia e grava sob confirmação
 internal/ui/          UI nativa Bubble Tea (Pick, Toggle, Input, Confirm) + fallback numerado
 internal/theme/       estilos compartilhados entre TUI e wizard
-internal/tui/         modelo Bubble Tea, backend, formulários e telas
+internal/tui/         modelo Bubble Tea, backend, formulários, telas e resumo da semana
 internal/vault/       caminhos, validação e abertura do Obsidian
 docs/                 roadmap e documentação
 scripts/              scripts JS históricos do QuickAdd

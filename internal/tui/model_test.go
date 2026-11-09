@@ -12,6 +12,7 @@ import (
 	"daylist/internal/daylist"
 	"daylist/internal/planner"
 	"daylist/internal/timer"
+	"daylist/internal/week"
 )
 
 type fakeBackend struct {
@@ -25,6 +26,16 @@ type fakeBackend struct {
 	habits      []daylist.Item
 	habitDays   []time.Time
 	habitErr    error
+
+	report      *week.Report
+	reportErr   error
+	reportDays  []time.Time
+	feedback    bool
+	feedbackDay []time.Time
+	autoRun     int
+	autoToday   []time.Time
+	autoCreated bool
+	autoErr     error
 
 	timer       *timer.State
 	timerSave   int
@@ -139,6 +150,28 @@ func (f *fakeBackend) WeeklistHabitsOn(day time.Time) ([]daylist.Item, error) {
 		return nil, f.habitErr
 	}
 	return f.habits, nil
+}
+
+func (f *fakeBackend) WeekReportOn(day time.Time) (*week.Report, error) {
+	f.reportDays = append(f.reportDays, day)
+	if f.reportErr != nil {
+		return nil, f.reportErr
+	}
+	return f.report, nil
+}
+
+func (f *fakeBackend) FeedbackExistsOn(day time.Time) bool {
+	f.feedbackDay = append(f.feedbackDay, day)
+	return f.feedback
+}
+
+func (f *fakeBackend) AutoGeneratePreviousFeedback(today time.Time) (bool, error) {
+	f.autoRun++
+	f.autoToday = append(f.autoToday, today)
+	if f.autoErr != nil {
+		return false, f.autoErr
+	}
+	return f.autoCreated, nil
 }
 
 func (f *fakeBackend) PlanDaylist(target time.Time) (*planner.Plan, error) {
@@ -1052,6 +1085,15 @@ func TestHelpModeReturnsOnAnyKey(t *testing.T) {
 	}
 	if !strings.Contains(view, "N  criar a daylist de amanhã") {
 		t.Errorf("ajuda não menciona a criação da daylist de amanhã:\n%s", view)
+	}
+	for _, want := range []string{
+		"S  ver o resumo da semana",
+		"feedback da última semana: automático a partir de segunda",
+		"não há atalho g para feedback",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("ajuda não contém %q:\n%s", want, view)
+		}
 	}
 	m = updateModel(t, m, keyRunes("x"))
 	if m.mode != modeMain {
